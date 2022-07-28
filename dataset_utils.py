@@ -368,3 +368,14 @@ def dataset_generator_from_batches(path: str) -> DatasetBatch:
 if __name__ == "__main__":
     dataset_path = r"..\03 - Dataset\CED_simple\simple_color_keyboard_2.bag"
     extract_rosbag(dataset_path)
+
+    events_df, images_df = load_bag_as_dataframes(dataset_path, image_type="color")
+
+    ds_gen = dataset_generator_from_bag(dataset_path, "color", n_temp_bins=10)
+    dst_folder = os.path.join(
+        os.path.dirname(dataset_path),
+        os.path.basename(dataset_path).replace(".bag", ""),
+        "batches",
+    )
+    print("Saving batches to", dst_folder)
+    save_batches_to_disk(ds_gen, dst_folder)
