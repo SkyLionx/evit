@@ -96,11 +96,17 @@ class TransformerModel(torch.nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
 
         sos_tensor = torch.tensor(
-            [1] + [0] * 255, dtype=torch.float32, requires_grad=False
+            [1] + [0] * (encoding_size-1), dtype=torch.float32, requires_grad=False
         ).reshape(1, 1, -1)
         self.sos_token = torch.nn.Parameter(sos_tensor)
 
-        self.transformer = torch.nn.LSTM()
+        self.transformer = torch.nn.Transformer(
+            d_model=encoding_size,
+            nhead=heads, 
+            num_encoder_layers=layers_number,
+            num_decoder_layers=layers_number,
+            batch_first=True
+        )
 
     def forward(self, x):
         # print("Input shape", x.shape)
