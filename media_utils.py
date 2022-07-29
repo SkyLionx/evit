@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import os
 import pandas as pd
+import torch
 from tqdm import tqdm
 
 
@@ -42,12 +43,13 @@ def save_video(path, frames, fps):
 
 
 def save_video_tensors(path, frames, fps):
+    frames = torch.stack(frames)
     assert (
-        frames.min() >= 0.0 and frames.max() <= 1.0
+       frames.min() >= 0.0 and frames.max() <= 1.0
     ), "frames range should be in [0, 1]"
     height, width = frames[0].shape[:2]
     frames = [(frame * 255).numpy().astype(np.uint8) for frame in frames]
-    save_video(path, frames, width, height, fps)
+    save_video(path, frames, fps)
 
 
 def get_empty_images(
