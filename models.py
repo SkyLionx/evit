@@ -1,6 +1,6 @@
 from typing import Tuple
 import torch
-
+import math
 
 class EventsToImagesUNet(torch.nn.Module):
     def __init__(self, input_channels):
@@ -72,20 +72,40 @@ class EventsToImagesUNet(torch.nn.Module):
             torch.nn.ReLU(),
         )
 
+class PositionalEncoding(torch.nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor, shape [batch_size, seq_len, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
 
 class TransformerModel(torch.nn.Module):
     def __init__(
         self,
-        input_shape: Tuple[int, int, int],
+        output_shape: Tuple[int, int, int],
         encoding_size: int,
         heads: int,
         layers_number: int,
     ):
         super(TransformerModel, self).__init__()
 
-        width, height, channels = input_shape
+        width, height, channels = output_shape
 
-        self.input_shape = input_shape
+        self.output_shape = output_shape
         self.encoding_size = encoding_size
         self.heads = heads
         self.layers_number = layers_number
@@ -100,6 +120,7 @@ class TransformerModel(torch.nn.Module):
         ).reshape(1, 1, -1)
         self.sos_token = torch.nn.Parameter(sos_tensor)
 
+        self.pe = PositionalEncoding(encoding_size, max_len=10)
         self.transformer = torch.nn.Transformer(
             d_model=encoding_size,
             nhead=heads, 
@@ -109,15 +130,18 @@ class TransformerModel(torch.nn.Module):
         )
 
     def forward(self, x):
-        # print("Input shape", x.shape)
-        width, height, channels = self.input_shape
-        batches, bins = x.shape[0], x.shape[1]
+        # print("x shape", x.shape, "output shape", self.output_shape)
+        width, height, channels = self.output_shape
+        batches, bins = x.shape[:2]
 
-        x = x.reshape(-1, bins, height * width)
+        x = x.reshape(batches, bins, height * width)
         # print("Shape before projection", x.shape)
         x = self.linear_proj(x)
         # print("Shape after projection", x.shape)
         x = self.activation(x)
+
+        x = self.pe(x)
+        # print("Shape after positional encoding", x.shape)
 
         batched_sos = torch.repeat_interleave(self.sos_token, batches, 0)
         # print("Transformer inputs", x.shape, batched_sos.shape)
@@ -126,6 +150,6 @@ class TransformerModel(torch.nn.Module):
         x = self.linear_inv_proj(x)
         # print("Shape after inv. projection", x.shape)
         y = self.sigmoid(x)
-        y = y.reshape(-1, channels, height, width)
+        y = y.reshape(batches, channels, height, width)
         # print("Output shape", y.shape)
         return y
