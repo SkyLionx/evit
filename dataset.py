@@ -9,13 +9,15 @@ class CEDDataset(torch.utils.data.Dataset):
         self.limit = limit
         self.files_list = []
 
-        for file in os.listdir(dataset_path):
+        for file in sorted(os.listdir(dataset_path)):
+            if limit and len(self.files_list) >= limit:
+              break
             if file.endswith(".pt"):
                 file_path = os.path.join(dataset_path, file)
                 self.files_list.append(file_path)
 
     def __len__(self):
-        return self.limit or len(self.files_list)
+        return len(self.files_list)
 
     def __getitem__(self, idx: int):
         file = self.files_list[idx]
@@ -53,6 +55,7 @@ class ConcatBatchSampler(torch.utils.data.Sampler):
         self.drop_last = drop_last
 
     def __iter__(self):
+        start_idx = 0
         if self.drop_last:
             for sampler in self.samplers:
                 sampler_iter = iter(sampler)
@@ -67,7 +70,7 @@ class ConcatBatchSampler(torch.utils.data.Sampler):
                 batch = [0] * self.batch_size
                 idx_in_batch = 0
                 for idx in sampler:
-                    batch[idx_in_batch] = idx
+                    batch[idx_in_batch] = start_idx + idx
                     idx_in_batch += 1
                     if idx_in_batch == self.batch_size:
                         yield batch
@@ -75,6 +78,7 @@ class ConcatBatchSampler(torch.utils.data.Sampler):
                         batch = [0] * self.batch_size
                 if idx_in_batch > 0:
                     yield batch[:idx_in_batch]
+                start_idx += len(sampler)
 
     def __len__(self) -> int:
         if self.drop_last:
