@@ -4,8 +4,9 @@ import numpy as np
 
 
 class CEDDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str, limit: int = None):
         self.dataset_path = dataset_path
+        self.limit = limit
         self.files_list = []
 
         for file in os.listdir(dataset_path):
@@ -14,7 +15,7 @@ class CEDDataset(torch.utils.data.Dataset):
                 self.files_list.append(file_path)
 
     def __len__(self):
-        return len(self.files_list)
+        return self.limit or len(self.files_list)
 
     def __getitem__(self, idx: int):
         file = self.files_list[idx]
