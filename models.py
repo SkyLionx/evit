@@ -128,6 +128,12 @@ class TransformerModel(torch.nn.Module):
             num_decoder_layers=layers_number,
             batch_first=True
         )
+        # self.lstm = torch.nn.LSTM(
+        #   batch_first=True,
+        #   input_size=encoding_size,
+        #   num_layers=layers_number,
+        #   hidden_size=encoding_size
+        # )
 
     def forward(self, x):
         # print("x shape", x.shape, "output shape", self.output_shape)
@@ -145,8 +151,10 @@ class TransformerModel(torch.nn.Module):
 
         batched_sos = torch.repeat_interleave(self.sos_token, batches, 0)
         # print("Transformer inputs", x.shape, batched_sos.shape)
-        x = self.transformer.forward(x, batched_sos)
+        x = self.transformer(x, batched_sos)
+        # x = self.lstm(x)[0][:, -1]
         # print("Transformer output", x.shape)
+        
         x = self.linear_inv_proj(x)
         # print("Shape after inv. projection", x.shape)
         y = self.sigmoid(x)
