@@ -51,6 +51,16 @@ def save_video_tensors(path, frames, fps):
     frames = [(frame * 255).numpy().astype(np.uint8) for frame in frames]
     save_video(path, frames, fps)
 
+def save_predicted_video(model, device, dataloader, output_name, fps=30):
+  frames = []
+  for (img_in, events), img_out in tqdm(dataloader):
+      with torch.no_grad():
+          output = model(events.to(device))
+      image_output = torch.einsum("bchw -> bhwc", output).squeeze()
+      for image in image_output:
+          frames.append(image.detach().cpu())
+  save_video_tensors(output_name, frames, fps)
+
 
 def get_empty_images(
     w: int, h: int
