@@ -1,3 +1,4 @@
+from typing import Dict
 import torch
 import time
 import numpy as np
@@ -66,20 +67,21 @@ def train_transformer(
     model: torch.nn.Module,
     device: str,
     train_ds: torch.utils.data.DataLoader,
-    n_epochs: int,
+    params: Dict,
 ):
+
     model.to(device)
 
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
 
     model.train()
-    for epoch in range(n_epochs):
+    for epoch in range(params["n_epochs"]):
         start_epoch_time = time.time()
         batch_losses = []
         print(
             "Epoch {}/{} Step {}/{} Loss: {:.5f}".format(
-                epoch + 1, n_epochs, 1, len(train_ds), 0
+                epoch + 1, params["n_epochs"], 1, len(train_ds), 0
             ),
             end="",
         )
@@ -102,7 +104,7 @@ def train_transformer(
 
             print(
                 "\rEpoch {}/{} Step {}/{} Loss: {:.5f}".format(
-                    epoch + 1, n_epochs, step + 1, len(train_ds), loss
+                    epoch + 1, params["n_epochs"], step + 1, len(train_ds), loss
                 ),
                 end="",
             )
@@ -110,7 +112,7 @@ def train_transformer(
         print(
             "\rEpoch {}/{} Step {}/{} Mean Loss: {:.5f} Elapsed Seconds: {}s".format(
                 epoch + 1,
-                n_epochs,
+                params["n_epochs"],
                 step + 1,
                 len(train_ds),
                 np.mean(batch_losses),
