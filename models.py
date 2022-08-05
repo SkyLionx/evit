@@ -196,7 +196,7 @@ class EventEncoder(torch.nn.Module):
         return x.flatten(start_dim=1)
 
 class EventDecoder(torch.nn.Module):
-    def __init__(self, output_shape: tuple[int, int, int], n_filters: list):
+    def __init__(self, output_shape: Tuple[int, int, int], n_filters: list):
         super().__init__()
         self.output_shape = output_shape
         self.dec_blocks = torch.nn.ModuleList()

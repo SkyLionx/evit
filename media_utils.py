@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Iterable, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
@@ -16,6 +16,23 @@ def plot_img(img: np.ndarray, grid=False, real_ticks=False, show=True, cmap="gra
     plt.imshow(img, cmap=cmap)
     if show:
         plt.show()
+
+def plot_square(imgs: Iterable[np.ndarray], titles: Iterable[str]=None, size: int = 4):
+    n = len(imgs)
+    cols = int(np.ceil(np.sqrt(n)))
+    rows = int(np.floor(np.sqrt(n)))
+    fig, axs = plt.subplots(rows, cols, figsize=(cols*size, rows*size))
+    for i, ax in enumerate(axs.flatten()):
+
+        if i >= len(imgs):
+            ax.remove()
+            continue
+
+        ax.imshow(imgs[i])
+        if titles:
+            ax.set_title(titles[i])
+    plt.tight_layout()
+    plt.show()
 
 
 def image_from_buffer(
