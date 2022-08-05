@@ -240,3 +240,58 @@ class EventAutoEncoder(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         code = self.encoder(x)
         return self.decoder(code)
+
+class EventEncoderTransformer(torch.nn.Module):
+    def __init__(
+        self,
+        output_shape: Tuple[int, int, int],
+        encoder: torch.nn.Module,
+        encoding_size: int,
+        heads: int,
+        layers_number: int,
+    ):
+        super(EventEncoderTransformer, self).__init__()
+
+        width, height, channels = output_shape
+
+        self.output_shape = output_shape
+        self.encoder = encoder
+        self.encoding_size = encoding_size
+        self.heads = heads
+        self.layers_number = layers_number
+
+        self.activation = torch.nn.ReLU()
+        self.linear_inv_proj = torch.nn.Linear(encoding_size, width * height * channels)
+        self.sigmoid = torch.nn.Sigmoid()
+
+        sos_tensor = torch.tensor(
+            [1] + [0] * (encoding_size-1), dtype=torch.float32, requires_grad=False
+        ).reshape(1, 1, -1)
+        self.sos_token = torch.nn.Parameter(sos_tensor)
+
+        self.pe = PositionalEncoding(encoding_size, max_len=10)
+        self.transformer = torch.nn.Transformer(
+            d_model=encoding_size,
+            nhead=heads, 
+            num_encoder_layers=layers_number,
+            num_decoder_layers=layers_number,
+            batch_first=True
+        )
+
+    def forward(self, x):
+        width, height, channels = self.output_shape
+        batches, bins = x.shape[:2]
+            
+        x = self.encoder(x.reshape(-1, 1, height, width))
+        x = x.reshape(batches, bins, -1)
+
+        x = self.pe(x)
+
+        batched_sos = torch.repeat_interleave(self.sos_token, batches, 0)
+        x = self.transformer(x, batched_sos)
+        
+        x = self.linear_inv_proj(x)
+        y = self.sigmoid(x)
+
+        y = y.reshape(batches, channels, height, width)
+        return y
