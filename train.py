@@ -14,7 +14,8 @@ def train_generic(
     params: Dict,
     log_path: str = None,
     input_process_fn: Callable = None,
-    output_process_fn: Callable = None
+    output_process_fn: Callable = None,
+    valid_ds: torch.utils.data.DataLoader = None
 ):
 
     if log_path:
@@ -38,8 +39,8 @@ def train_generic(
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
 
-    model.train()
     for epoch in range(params["n_epochs"]):
+        model.train()
         start_epoch_time = time.time()
         batch_losses = []
         print(
@@ -48,6 +49,7 @@ def train_generic(
             ),
             end="",
         )
+
         for step, batch in enumerate(train_ds):
 
             if input_process_fn:
@@ -76,8 +78,11 @@ def train_generic(
                 ),
                 end="",
             )
+
+        # Epoch has ended
         elapsed_time = time.time() - start_epoch_time
         loss = np.mean(batch_losses)
+
         print(
             "\rEpoch {}/{} Step {}/{} Mean Loss: {:.5f} Elapsed Seconds: {}s".format(
                 epoch + 1,
@@ -86,13 +91,47 @@ def train_generic(
                 len(train_ds),
                 loss,
                 int(elapsed_time),
-            )
+            ), end=""
         )
+
+        if valid_ds:
+            model.eval()
+            with torch.no_grad():
+                for step, batch in enumerate(valid_ds):
+                    if input_process_fn:
+                        X, y = input_process_fn(batch)
+                    else:
+                        X, y = batch
+                    
+                    X = X.to(device)
+                    y = y.to(device)
+                    
+                    model_output = model(X)
+
+                    if output_process_fn:
+                        model_output = output_process_fn(model_output)
+
+                    loss: torch.Tensor = criterion(model_output, y)
+                    batch_losses.append(loss.cpu().detach())
+            valid_loss = np.mean(batch_losses)
+
+            print(" - Valid Loss: {:.5f}".format(valid_loss), end="")
+
+        print()
 
         if log_path:
             with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8")as log_file:
-                log_epochs.append((float(loss), int(elapsed_time)))
+                epoch_info = {
+                    "train_loss": float(loss),
+                    "elapsed_seconds": int(elapsed_time),
+                }
+
+                if valid_ds:
+                    epoch_info.update({"valid_loss": float(valid_loss)})
+
+                log_epochs.append(epoch_info)
                 log.update({"epochs": log_epochs})
+
                 json.dump(log, log_file, indent=2)
 
 
@@ -101,7 +140,8 @@ def train_unet(
     device: str,
     train_ds: torch.utils.data.DataLoader,
     params: Dict,
-    log_path: str = None
+    log_path: str = None,
+    valid_ds: torch.utils.data.DataLoader = None
 ):
     def in_fn(batch):
         (input_images, events_tensors), ground_truth_images = batch
@@ -112,7 +152,7 @@ def train_unet(
         input_tensors = torch.hstack((input_images, events_tensors))
         return input_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn)
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)
 
 
 def train_transformer(
@@ -120,7 +160,8 @@ def train_transformer(
     device: str,
     train_ds: torch.utils.data.DataLoader,
     params: Dict,
-    log_path: str = None
+    log_path: str = None,
+    valid_ds: torch.utils.data.DataLoader = None
 ):
 
     def in_fn(batch):
@@ -129,14 +170,15 @@ def train_transformer(
         # events_tensors: (batch, bins, height, width)
         return events_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn)
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)
 
 def train_autoencoder(
     model: torch.nn.Module,
     device: str,
     train_ds: torch.utils.data.Dataset,
     params: Dict,
-    log_path: str = None
+    log_path: str = None,
+    valid_ds: torch.utils.data.DataLoader = None
 ):
 
     def in_fn(sample):
@@ -144,4 +186,4 @@ def train_autoencoder(
         batch = torch.unsqueeze(torch.from_numpy(batch), 1)
         return batch, batch
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn)        
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)        
