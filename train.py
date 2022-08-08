@@ -126,16 +126,18 @@ def train_generic(
         if save_best_model:
             current_loss = loss if not valid_ds else valid_loss
             loss_key = "train_loss" if not valid_ds else "valid_loss"
-            
+
             if best_loss == -1 or current_loss < best_loss:
                 model_filename = f"model.pt"
                 model_path = os.path.join(experiment_dir, model_filename)
                 torch.save(model.state_dict(), model_path)
-            best_loss = current_loss
-            log.update({"best_model": {
-                "epoch": epoch,
-                loss_key: float(current_loss)
-            }})
+               
+                best_loss = current_loss
+                
+                log.update({"best_model": {
+                    "epoch": epoch,
+                    loss_key: float(current_loss)
+                }})
 
         if log_path:
             with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8")as log_file:
