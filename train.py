@@ -15,7 +15,8 @@ def train_generic(
     log_path: str = None,
     input_process_fn: Callable = None,
     output_process_fn: Callable = None,
-    valid_ds: torch.utils.data.DataLoader = None
+    valid_ds: torch.utils.data.DataLoader = None,
+    save_best_model: bool = False
 ):
 
     if log_path:
@@ -38,6 +39,8 @@ def train_generic(
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
+
+    best_valid_loss = -1
 
     for epoch in range(params["n_epochs"]):
         model.train()
@@ -119,6 +122,17 @@ def train_generic(
 
         print()
 
+        if save_best_model:
+            if best_valid_loss == -1 or valid_loss < best_valid_loss:
+                model_filename = f"model.pt"
+                model_path = os.path.join(experiment_dir, model_filename)
+                torch.save(model.state_dict(), model_path)
+            best_valid_loss = valid_loss
+            log.update({"best_model": {
+                "epoch": epoch,
+                "valid_loss": float(valid_loss)
+            }})
+
         if log_path:
             with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8")as log_file:
                 epoch_info = {
@@ -141,7 +155,8 @@ def train_unet(
     train_ds: torch.utils.data.DataLoader,
     params: Dict,
     log_path: str = None,
-    valid_ds: torch.utils.data.DataLoader = None
+    valid_ds: torch.utils.data.DataLoader = None,
+    save_best_model: bool = False
 ):
     def in_fn(batch):
         (input_images, events_tensors), ground_truth_images = batch
@@ -152,7 +167,7 @@ def train_unet(
         input_tensors = torch.hstack((input_images, events_tensors))
         return input_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)
 
 
 def train_transformer(
@@ -161,7 +176,8 @@ def train_transformer(
     train_ds: torch.utils.data.DataLoader,
     params: Dict,
     log_path: str = None,
-    valid_ds: torch.utils.data.DataLoader = None
+    valid_ds: torch.utils.data.DataLoader = None,
+    save_best_model: bool = False
 ):
 
     def in_fn(batch):
@@ -170,7 +186,7 @@ def train_transformer(
         # events_tensors: (batch, bins, height, width)
         return events_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)
 
 def train_autoencoder(
     model: torch.nn.Module,
@@ -178,7 +194,8 @@ def train_autoencoder(
     train_ds: torch.utils.data.Dataset,
     params: Dict,
     log_path: str = None,
-    valid_ds: torch.utils.data.DataLoader = None
+    valid_ds: torch.utils.data.DataLoader = None,
+    save_best_model: bool = False
 ):
 
     def in_fn(sample):
@@ -186,4 +203,4 @@ def train_autoencoder(
         batch = torch.unsqueeze(torch.from_numpy(batch), 1)
         return batch, batch
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds)        
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)        
