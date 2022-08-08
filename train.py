@@ -40,7 +40,8 @@ def train_generic(
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
 
-    best_valid_loss = -1
+    # This is going to be train loss if no valid data has been provided
+    best_loss = -1
 
     for epoch in range(params["n_epochs"]):
         model.train()
@@ -123,14 +124,17 @@ def train_generic(
         print()
 
         if save_best_model:
-            if best_valid_loss == -1 or valid_loss < best_valid_loss:
+            current_loss = loss if not valid_ds else valid_loss
+            loss_key = "train_loss" if not valid_ds else "valid_loss"
+            
+            if best_loss == -1 or current_loss < best_loss:
                 model_filename = f"model.pt"
                 model_path = os.path.join(experiment_dir, model_filename)
                 torch.save(model.state_dict(), model_path)
-            best_valid_loss = valid_loss
+            best_loss = current_loss
             log.update({"best_model": {
                 "epoch": epoch,
-                "valid_loss": float(valid_loss)
+                loss_key: float(current_loss)
             }})
 
         if log_path:
