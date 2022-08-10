@@ -155,17 +155,17 @@ class EventEncoderTransformer(torch.nn.Module):
 class PatchExtractor(torch.nn.Module):
     def __init__(self, patch_size: Tuple[int, int]):
         super().__init__()
-        self.p_h, self.p_w = patch_size
+        self.p_w, self.p_h = patch_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, channels, h, w = x.shape
 
-        x = torch.einsum("bthw -> bhwt", x)
+        x = torch.einsum("bchw -> bhwc", x)
         x = x.reshape((batch, h // self.p_h, self.p_h, w // self.p_w, self.p_w, channels))
 
         x = x.swapaxes(2, 3)
         x = x.reshape((batch, -1, self.p_h, self.p_w, channels))
-        x = torch.einsum("bnhwt -> btnhw", x)
+        x = torch.einsum("bnhwc -> bcnhw", x)
 
         # Merge channels and patches
         x = x.flatten(start_dim=1, end_dim=2)
@@ -214,21 +214,23 @@ class VisionTransformer(torch.nn.Module):
         # self.dec = torch.nn.TransformerDecoder(dec_layer, layers_number)
 
         if use_linear_proj:
-            self.inv_proj = torch.nn.Linear(encoding_size, self.token_dim)
+            self.inv_proj = torch.nn.Linear(self.token_dim, self.p_w * self.p_h)
 
-        n_convs = int(math.log2(self.w) - math.log2(self.n_patch_x))
-        self.transp_convs = torch.nn.ModuleList()
-        for i in range(n_convs):
-            in_filters = self.token_dim // 2 ** (i)
-            out_filters = self.token_dim // (2 ** (i + 1))
-            tconv = torch.nn.ConvTranspose2d(in_filters, out_filters, (2, 2), stride=(2, 2))
-            self.transp_convs.append(tconv)
-        self.final_conv = torch.nn.Conv2d(out_filters, 3, (3, 3), padding="same")
+        # n_convs = int(math.log2(self.w) - math.log2(self.n_patch_x))
+        # self.transp_convs = torch.nn.ModuleList()
+        # for i in range(n_convs):
+        #     in_filters = self.token_dim // 2 ** (i)
+        #     out_filters = self.token_dim // (2 ** (i + 1))
+        #     tconv = torch.nn.ConvTranspose2d(in_filters, out_filters, (2, 2), stride=(2, 2))
+        #     self.transp_convs.append(tconv)
+
+        self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
 
     def forward(self, x):
         batch, bins, h, w = x.shape
 
         x = self.patch_extractor(x)
+        # x shape = (batch, bins * n_patches, p_h * p_w)
 
         if self.use_linear_proj:
             x = self.linear_proj(x)
@@ -238,20 +240,20 @@ class VisionTransformer(torch.nn.Module):
         x = self.enc(x)
 
         x = x.reshape(batch, bins, -1, self.token_dim)
-        x = torch.mean(x, dim=1)
 
         # Option 1, with decoder
+        # x = torch.mean(x, dim=1)
         # x = self.dec(x)
         # x = self.inv_proj(x)
         #  return self.assemble_image(x)
 
         # Option 2, with traspose conv
-        x = x.reshape(batch, self.h // self.p_h, self.w // self.p_w, self.token_dim)
-        x = torch.einsum("bhwc -> bchw", x)
+        if self.use_linear_proj:
+            x = self.inv_proj(x)
+        x = x.reshape(batch, bins, self.n_patch_y, self.n_patch_x, self.p_h, self.p_w)
+        x = torch.einsum("btyxhw -> btyhxw", x)
+        x = x.reshape(batch, bins, self.h, self.w)
 
-        for tconv in self.transp_convs:
-            x = tconv(x)
-        
         x = self.final_conv(x)
         return x  
 
