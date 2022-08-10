@@ -210,3 +210,21 @@ def train_autoencoder(
         return batch, batch
 
     train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)        
+
+def train_vit(
+    model: torch.nn.Module,
+    device: str,
+    train_ds: torch.utils.data.DataLoader,
+    params: Dict,
+    log_path: str = None,
+    valid_ds: torch.utils.data.DataLoader = None,
+    save_best_model: bool = False
+):
+
+    def in_fn(batch):
+        (input_images, events_tensors), ground_truth_images = batch
+        events_tensors = events_tensors[:, :, :256, :256]
+        ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :256, :256]
+        return events_tensors, ground_truth_images
+
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)
