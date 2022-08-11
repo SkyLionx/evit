@@ -225,6 +225,7 @@ class VisionTransformer(torch.nn.Module):
         #     self.transp_convs.append(tconv)
 
         self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
         batch, bins, h, w = x.shape
@@ -255,6 +256,7 @@ class VisionTransformer(torch.nn.Module):
         x = x.reshape(batch, bins, self.h, self.w)
 
         x = self.final_conv(x)
+        x = self.sigmoid(x)
         return x  
 
     def assemble_image(self, x: torch.Tensor) -> torch.Tensor:
