@@ -4,6 +4,7 @@ import torch
 import time
 import numpy as np
 import json
+import matplotlib.pyplot as plt
 
 from utils import format_current_date
 
@@ -16,7 +17,8 @@ def train_generic(
     input_process_fn: Callable = None,
     output_process_fn: Callable = None,
     valid_ds: torch.utils.data.DataLoader = None,
-    save_best_model: bool = False
+    save_best_model: bool = False,
+    save_imgs_after_n_epochs: int = None
 ):
 
     if log_path:
@@ -24,6 +26,9 @@ def train_generic(
         
         experiment_dir = os.path.join(log_path, now)
         os.mkdir(experiment_dir)
+
+        if save_imgs_after_n_epochs:
+            os.mkdir(os.path.join(experiment_dir, "imgs"))
 
         with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8")as log_file:
             log = {
@@ -44,6 +49,9 @@ def train_generic(
     best_loss = -1
 
     for epoch in range(params["n_epochs"]):
+        save_epochs = save_imgs_after_n_epochs
+        save_imgs = save_epochs and (epoch + 1) % save_epochs == 0
+
         model.train()
         start_epoch_time = time.time()
         batch_losses = []
@@ -65,6 +73,12 @@ def train_generic(
             y = y.to(device)
             
             model_output = model(X)
+
+            train_imgs_out = []
+            if save_imgs and len(train_imgs_out) < 5:
+                outs = model_output[:5].detach().cpu()
+                ys = y[:5].detach().cpu()
+                train_imgs_out = list(zip(outs, ys))
 
             if output_process_fn:
                 model_output = output_process_fn(model_output)
@@ -100,6 +114,7 @@ def train_generic(
 
         if valid_ds:
             model.eval()
+            
             with torch.no_grad():
                 for step, batch in enumerate(valid_ds):
                     if input_process_fn:
@@ -111,6 +126,12 @@ def train_generic(
                     y = y.to(device)
                     
                     model_output = model(X)
+
+                    val_imgs_out = []
+                    if save_imgs:
+                        outs = [img.detach().cpu() for img in model_output]
+                        ys = [img.detach().cpu() for img in y[:5]]
+                        val_imgs_out = list(zip(outs, ys))
 
                     if output_process_fn:
                         model_output = output_process_fn(model_output)
@@ -153,6 +174,22 @@ def train_generic(
                 log.update({"epochs": log_epochs})
 
                 json.dump(log, log_file, indent=2)
+
+        if save_imgs:
+            for i, (out, y) in enumerate(train_imgs_out + val_imgs_out):
+                ds = "train" if i < len(train_imgs_out) else "valid"
+                filename = f"{ds}_{epoch:04}_{i:04}.png"
+                out = torch.permute(out, (1, 2, 0)).numpy()
+                y = torch.permute(y, (1, 2, 0)).numpy()
+                plt.subplot(1, 2, 1)
+                plt.title("Model Output")
+                plt.axis("off")
+                plt.imshow(out)
+                plt.subplot(1, 2, 2)
+                plt.title("Ground Truth")
+                plt.axis("off")
+                plt.imshow(y)
+                plt.savefig(os.path.join(experiment_dir, "imgs", filename))
 
 
 def train_unet(
@@ -218,7 +255,8 @@ def train_vit(
     params: Dict,
     log_path: str = None,
     valid_ds: torch.utils.data.DataLoader = None,
-    save_best_model: bool = False
+    save_best_model: bool = False,
+    save_imgs_after_n_epochs: int = None
 ):
 
     def in_fn(batch):
@@ -227,4 +265,4 @@ def train_vit(
         ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :256, :256]
         return events_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model)
+    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model, save_imgs_after_n_epochs=save_imgs_after_n_epochs)
