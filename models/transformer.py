@@ -23,7 +23,7 @@ class PositionalEncoding(torch.nn.Module):
         Args:
             x: Tensor, shape [batch_size, seq_len, embedding_dim]
         """
-        x = x + self.pe[: x.size(0)]
+        x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
 
@@ -236,7 +236,7 @@ class VisionTransformer(torch.nn.Module):
         if self.use_linear_proj:
             x = self.linear_proj(x)
 
-        x = x + self.pe(x)
+        x = self.pe(x)
 
         x = self.enc(x)
 
