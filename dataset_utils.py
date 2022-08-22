@@ -164,7 +164,7 @@ def inspect_message_timestamps(dataset_path: str):
 
 
 # Load dataset as Pandas dataframes
-def load_bag_as_dataframes(dataset_path: str, image_type: str):
+def load_bag_as_dataframes(dataset_path: str, image_type: str, max_events: int=None):
     """
     Load the dataset from a rosbag file and return two pandas dataframe with events and images.
     `image_type` can be either `raw` or `color`.
@@ -181,6 +181,7 @@ def load_bag_as_dataframes(dataset_path: str, image_type: str):
     events_list = []
     images_list = []
 
+    n_events = 0
     for topic, msg, t in tqdm(bag.read_messages(), total=bag.get_message_count()):
         if topic == image_topic:
             seq = msg.header.seq
@@ -205,6 +206,13 @@ def load_bag_as_dataframes(dataset_path: str, image_type: str):
 
                 event = [seq, x, y, secs, polarity]
                 events_list.append(event)
+
+                n_events += 1
+                if n_events == max_events:
+                    break
+        
+        if n_events == max_events:
+            break
 
     bag.close()
 
@@ -324,6 +332,13 @@ def dataset_generator_from_bag(
             images.append((msg.header.stamp.to_sec(), image))
     print("Images loaded")
 
+    # Check if images timestamps are ordered
+    last_ts = images[0][0]
+    for i in range(1, len(images)):
+        current_ts = images[i][0]
+        assert last_ts < current_ts, "Images timestamps are not ordered ({} >= {})".format(last_ts, current_ts)
+        last_ts = current_ts
+
     current_img_idx = 1
     events_batch: List[Event] = []
 
@@ -340,16 +355,21 @@ def dataset_generator_from_bag(
                     events_batch.append(event_obj)
                 else:
                     current_img_idx += 1
+
+                    if len(events_batch) == 0:
+                        # There are no events between these two images
+                        print("Warning, skipping one image")
+                        continue
+
                     event_grid = create_event_grid(
                         events_batch, w, h, n_temp_bins=n_temp_bins
                     )
-                    events_batch = []
                     yield (
-                        (images[current_img_idx - 2][1], event_grid),
-                        images[current_img_idx - 1][1],
+                        event_grid, images[current_img_idx - 1][1],
                     )
                     if current_img_idx == len(images):
                         return
+                    events_batch = [event_obj]
 
 
 def save_batches_to_disk(ds: Generator[DatasetBatch, None, None], dst_folder: str):
@@ -366,10 +386,8 @@ def dataset_generator_from_batches(path: str) -> DatasetBatch:
 
 
 if __name__ == "__main__":
-    dataset_path = r"..\03 - Dataset\CED_simple\simple_color_keyboard_2.bag"
-    extract_rosbag(dataset_path)
-
-    events_df, images_df = load_bag_as_dataframes(dataset_path, image_type="color")
+    
+    dataset_path = r"C:\datasets\driving_city_4.bag"
 
     ds_gen = dataset_generator_from_bag(dataset_path, "color", n_temp_bins=10)
     dst_folder = os.path.join(
