@@ -180,8 +180,8 @@ def train_generic(
 
                     val_imgs_out = []
                     if save_imgs:
-                        outs = model_output
-                        ys = y[:5]
+                        outs = model_output.detach()
+                        ys = y[:5].detach()
                         val_imgs_out = list(zip(outs, ys))
 
                     if output_process_fn:
@@ -222,8 +222,8 @@ def train_generic(
             for i, (out, y) in enumerate(train_imgs_out + val_imgs_out):
                 ds = "train" if i < len(train_imgs_out) else "valid"
                 filename = f"{ds}_{epoch:04}_{i:04}.png"
-                out = torch.permute(out, (1, 2, 0)).detach().cpu().numpy()
-                y = torch.permute(y, (1, 2, 0)).detach().cpu().numpy()
+                out = torch.permute(out, (1, 2, 0)).cpu().numpy()
+                y = torch.permute(y, (1, 2, 0)).cpu().numpy()
                 plt.subplot(1, 2, 1)
                 plt.title("Model Output")
                 plt.axis("off")
