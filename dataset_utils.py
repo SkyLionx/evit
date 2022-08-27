@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from media_utils import bgr_to_rgb, image_from_buffer
+from media_utils import bgr_to_rgb, rgb_to_bgr, denorm_img, image_from_buffer
 from utils import is_using_colab
 
 if is_using_colab():
@@ -312,25 +312,17 @@ DatasetBatch = Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]
 
 
 def dataset_generator_from_bag(
-    bag_path: str, image_type: str, n_temp_bins: int = 10
+    bag_path: str, events_topic="/dvs/events", image_topic="/dvs/image_color", channels=3, n_temp_bins: int = 10
 ) -> Generator[DatasetBatch, None, None]:
-    if image_type not in ["color", "raw"]:
-        raise Exception(
-            "image_type must be either 'color' or 'raw'. "
-            + image_type
-            + " is not a valid option."
-        )
-
     # Preload image frames to get timestamps
     images = []
     w, h = 0, 0
     with rosbag.Bag(bag_path) as bag:
-        for topic, msg, _ in bag.read_messages(topics=["/dvs/image_" + image_type]):
+        for topic, msg, _ in bag.read_messages(topics=[image_topic]):
             w, h = msg.width, msg.height
-            channels = 3 if image_type == "color" else 1
             image = bgr_to_rgb(image_from_buffer(msg.data, w, h, channels))
             images.append((msg.header.stamp.to_sec(), image))
-    print("Images loaded")
+    print(len(images), "{}x{} images loaded".format(w, h))
 
     # Check if images timestamps are ordered
     last_ts = images[0][0]
@@ -343,10 +335,10 @@ def dataset_generator_from_bag(
     events_batch: List[Event] = []
 
     with rosbag.Bag(bag_path) as bag:
-        msg_count = bag.get_message_count("/dvs/events")
+        msg_count = bag.get_message_count(events_topic)
 
         # Group events before image frame
-        for _, msg, _ in tqdm(bag.read_messages("/dvs/events"), total=msg_count):
+        for _, msg, _ in tqdm(bag.read_messages(events_topic), total=msg_count):
             for event in msg.events:
                 cur_image_ts = images[current_img_idx][0]
                 event_obj = Event(event.x, event.y, event.ts.to_sec(), event.polarity)
@@ -384,6 +376,29 @@ def dataset_generator_from_batches(path: str) -> DatasetBatch:
         if batch_file.endswith(".pt"):
             yield torch.load(os.path.join(path, batch_file))
 
+def get_sensor_size(bag_path: str, image_topic: str) -> Tuple[int, int]:
+    with rosbag.Bag(bag_path) as bag:
+        _, msg, _ = next(iter(bag.read_messages(topics=[image_topic])))
+        w, h = msg.width, msg.height
+    return w, h
+
+
+def inspect_events_bag(bag_path: str, video_name: str, events_topic: str, image_topic: str, image_channels, n_bins: int=10):
+    w, h = get_sensor_size(bag_path, image_topic)
+    
+    gen = dataset_generator_from_bag(bag_path, events_topic, image_topic, image_channels, n_bins)
+    
+    fourcc = cv.VideoWriter_fourcc(*"MP4V")
+    out = cv.VideoWriter(video_name, fourcc, 30, (w * 2, h))
+
+    try:
+        for events, img_out in gen:
+            for bin in events:
+                bin = np.repeat(bin.reshape(h, w, 1), 3, axis=2)
+                frame = np.hstack((denorm_img(bin), rgb_to_bgr(img_out)))
+                out.write(frame)
+    finally:
+        out.release()
 
 if __name__ == "__main__":
     

@@ -7,6 +7,11 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
+def norm_img(img: np.ndarray):
+    return img.astype(np.float32) / 255.0
+
+def denorm_img(img: np.ndarray):
+    return (img * 255).astype(np.uint8)
 
 def plot_img(img: np.ndarray, grid=False, real_ticks=False, show=True, cmap="gray"):
     if real_ticks:
@@ -42,10 +47,11 @@ def image_from_buffer(
         np.frombuffer(data, dtype=np.uint8).reshape(height, width, channels).squeeze()
     )
 
-
 def bgr_to_rgb(img: np.ndarray) -> np.ndarray:
     return img[..., ::-1]
 
+def rgb_to_bgr(img: np.ndarray) -> np.ndarray:
+    return img[..., ::-1]
 
 def save_video(path, frames, fps):
     height, width = frames[0].shape[:2]
