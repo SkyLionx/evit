@@ -21,11 +21,17 @@ class CEDDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         file = self.files_list[idx]
-        (in_img, events), out_img = torch.load(file)
-        in_img = (in_img[:256, :336, :] / 255.0).astype(np.float32)
-        out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
+        
+        # Old dataset format
+        # (in_img, events), out_img = torch.load(file)
+        # in_img = (in_img[:256, :336, :] / 255.0).astype(np.float32)
+        # out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
+        # return (in_img, events[:, :256, :336].astype(np.float32)), out_img
 
-        return (in_img, events[:, :256, :336].astype(np.float32)), out_img
+        # TODO: put crop as parameter
+        events, out_img = torch.load(file)
+        out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
+        return events[:, :256, :336].astype(np.float32), out_img
 
 
 class ConcatBatchSampler(torch.utils.data.Sampler):

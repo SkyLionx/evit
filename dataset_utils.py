@@ -115,43 +115,28 @@ def extract_rosbag(
 def inspect_dataset(dataset_path: str):
     bag = rosbag.Bag(dataset_path)
 
-    for topic, msg, t in bag.read_messages(topics=["/dvs/image_raw"]):
-        image_raw_msg = msg
-        break
+    topics_types, topics_info = bag.get_type_and_topic_info()
 
-    for topic, msg, t in bag.read_messages(topics=["/dvs/image_color"]):
-        image_color_msg = msg
-        break
-
-    for topic, msg, t in bag.read_messages(topics=["/dvs/events"]):
-        events_msg = msg
-        break
+    for topic_name in topics_info.keys():
+        messages = iter(bag.read_messages(topics=[topic_name]))
+        _topic, msg, _t = next(messages)
+        
+        print(topic_name)
+        print(str(msg)[:200] + "...")
+        print()
 
     bag.close()
 
-    print("Raw Image Event")
-    print(str(image_raw_msg)[:200] + "...")
-    print()
-
-    print("Color Image Event")
-    print(str(image_color_msg)[:200] + "...")
-    print()
-
-    print("Events Event")
-    print(str(events_msg)[:300] + "...")
-    print()
-
-
-def inspect_message_timestamps(dataset_path: str):
+def inspect_message_timestamps(dataset_path: str, events_topic="/dvs/events", images_topic="/dvs/image_color"):
     i = 0
     print("{:5}{:20}{}".format("", "Topic Name", "Event Timestamp"))
     with rosbag.Bag(dataset_path) as b:
         for topic, msg, _ in b.read_messages(
-            topics=["/dvs/events", "/dvs/image_color"]
+            topics=[events_topic, images_topic]
         ):
             print("{:3}) {:20}{}".format(i, topic, msg.header.stamp.to_sec()))
 
-            if topic == "/dvs/events":
+            if topic == events_topic:
                 print(
                     "{:25}First event timestamp {} Last event timestamp {}".format(
                         "", msg.events[0].ts.to_sec(), msg.events[-1].ts.to_sec()
@@ -164,18 +149,10 @@ def inspect_message_timestamps(dataset_path: str):
 
 
 # Load dataset as Pandas dataframes
-def load_bag_as_dataframes(dataset_path: str, image_type: str, max_events: int=None):
+def load_bag_as_dataframes(dataset_path: str, events_topic="/dvs/events", images_topic="/dvs/image_color", max_events: int=None):
     """
     Load the dataset from a rosbag file and return two pandas dataframe with events and images.
-    `image_type` can be either `raw` or `color`.
     """
-    if image_type not in ["raw", "color"]:
-        raise Exception(
-            "image_type argument can be either 'raw' or 'color', not " + image_type
-        )
-
-    image_topic = "/dvs/image_" + image_type
-
     bag = rosbag.Bag(dataset_path)
 
     events_list = []
@@ -183,7 +160,7 @@ def load_bag_as_dataframes(dataset_path: str, image_type: str, max_events: int=N
 
     n_events = 0
     for topic, msg, t in tqdm(bag.read_messages(), total=bag.get_message_count()):
-        if topic == image_topic:
+        if topic == images_topic:
             seq = msg.header.seq
             secs = msg.header.stamp.to_sec()
             width = msg.width
@@ -194,7 +171,7 @@ def load_bag_as_dataframes(dataset_path: str, image_type: str, max_events: int=N
             data = np.frombuffer(msg.data, dtype=np.uint8)
             image_event = [seq, secs, width, height, is_bigendian, encoding, step, data]
             images_list.append(image_event)
-        elif topic == "/dvs/events":
+        elif topic == events_topic:
             seq = msg.header.seq
             events = msg.events
 
@@ -400,15 +377,25 @@ def inspect_events_bag(bag_path: str, video_name: str, events_topic: str, image_
     finally:
         out.release()
 
-if __name__ == "__main__":
-    
-    dataset_path = r"C:\datasets\driving_city_4.bag"
-
-    ds_gen = dataset_generator_from_bag(dataset_path, "color", n_temp_bins=10)
-    dst_folder = os.path.join(
-        os.path.dirname(dataset_path),
-        os.path.basename(dataset_path).replace(".bag", ""),
-        "batches",
-    )
-    print("Saving batches to", dst_folder)
-    save_batches_to_disk(ds_gen, dst_folder)
+if __name__ == "__main__":    
+    bags = r"G:\VM\Shared Folder\bags"
+    for bag_name in [
+        "0010.bag",
+        "0011.bag",
+        # "0029.bag",
+        # "0030.bag",
+        # "0038.bag",
+        # "0059.bag",
+        # "0062.bag",
+        # "0072.bag",
+        # "0082.bag",
+        # "0088.bag",
+    ]:# os.listdir(bags):
+        bag_path = os.path.join(bags, bag_name)
+        ds_gen = dataset_generator_from_bag(bag_path, "/cam0/events", "/cam0/image_raw", 3, n_temp_bins=10)
+        folder_path = os.path.join(r"G:\VM\Shared Folder\preprocess", bag_name.replace(".bag", ""))
+        if not os.path.exists(folder_path):
+            os.mkdir(folder_path)
+        dst_folder = os.path.join(folder_path, "batches")
+        print("Saving batches to", dst_folder)
+        save_batches_to_disk(ds_gen, dst_folder)

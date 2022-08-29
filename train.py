@@ -332,9 +332,16 @@ def train_vit(
 ):
 
     def in_fn(batch):
-        (input_images, events_tensors), ground_truth_images = batch
-        events_tensors = events_tensors[:, :, :256, :256]
-        ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :256, :256]
+        # Old dataset format
+        # (input_images, events_tensors), ground_truth_images = batch
+        # events_tensors = events_tensors[:, :, :256, :256]
+        # ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :256, :256]
+        
+        events_tensors, ground_truth_images = batch
+        events_tensors = events_tensors[:, :, :128, :128]
+        ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :128, :128]
+        
+
         return events_tensors, ground_truth_images
 
     train_generic(model, device, train_ds, params, log_path=log_path, 
