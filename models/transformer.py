@@ -224,7 +224,25 @@ class VisionTransformer(torch.nn.Module):
         #     tconv = torch.nn.ConvTranspose2d(in_filters, out_filters, (2, 2), stride=(2, 2))
         #     self.transp_convs.append(tconv)
 
-        self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
+        self.convolutions = torch.nn.Sequential(
+            torch.nn.Conv2d(self.bins, 32, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 3, (3, 3), padding="same"),
+        )
+        # self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
@@ -255,7 +273,7 @@ class VisionTransformer(torch.nn.Module):
         x = torch.einsum("btyxhw -> btyhxw", x)
         x = x.reshape(batch, bins, self.h, self.w)
 
-        x = self.final_conv(x)
+        x = self.convolutions(x)
         x = self.sigmoid(x)
         return x  
 
