@@ -1,13 +1,16 @@
 import torch
 import os
 import numpy as np
-
+from typing import Tuple
 
 class CEDDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path: str, limit: int = None):
+    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None):
         self.dataset_path = dataset_path
         self.limit = limit
+        self.preload_to_RAM = preload_to_RAM
+        self.crop_size = crop_size
         self.files_list = []
+        self.data = []
 
         for file in sorted(os.listdir(dataset_path)):
             if limit and len(self.files_list) >= limit:
@@ -15,6 +18,9 @@ class CEDDataset(torch.utils.data.Dataset):
             if file.endswith(".pt"):
                 file_path = os.path.join(dataset_path, file)
                 self.files_list.append(file_path)
+                if self.preload_to_RAM:
+                    sample = self.pre_process(*torch.load(file_path))
+                    self.data.append(sample)
 
     def __len__(self):
         return len(self.files_list)
@@ -28,10 +34,22 @@ class CEDDataset(torch.utils.data.Dataset):
         # out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
         # return (in_img, events[:, :256, :336].astype(np.float32)), out_img
 
-        # TODO: put crop as parameter
-        events, out_img = torch.load(file)
-        out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
-        return events[:, :256, :336].astype(np.float32), out_img
+        if self.preload_to_RAM:
+            events, out_img = self.data[idx]
+        else:
+            events, out_img = torch.load(file)
+            events, out_img = self.pre_process(events, out_img)
+        return events, out_img
+
+    def pre_process(self, events, out_img):
+        if self.crop_size:
+            w, h = self.crop_size
+            out_img = out_img[:h, :w, :]
+            events = events[:, :h, :w]
+
+        out_img = (out_img / 255.0).astype(np.float32)
+        events = events.astype(np.float32)
+        return events, out_img
 
 
 class ConcatBatchSampler(torch.utils.data.Sampler):
