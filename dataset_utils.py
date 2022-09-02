@@ -378,24 +378,20 @@ def inspect_events_bag(bag_path: str, video_name: str, events_topic: str, image_
         out.release()
 
 if __name__ == "__main__":    
-    bags = r"G:\VM\Shared Folder\bags"
-    for bag_name in [
-        "0010.bag",
-        "0011.bag",
-        # "0029.bag",
-        # "0030.bag",
-        # "0038.bag",
-        # "0059.bag",
-        # "0062.bag",
-        # "0072.bag",
-        # "0082.bag",
-        # "0088.bag",
-    ]:# os.listdir(bags):
-        bag_path = os.path.join(bags, bag_name)
-        ds_gen = dataset_generator_from_bag(bag_path, "/cam0/events", "/cam0/image_raw", 3, n_temp_bins=10)
-        folder_path = os.path.join(r"G:\VM\Shared Folder\preprocess", bag_name.replace(".bag", ""))
-        if not os.path.exists(folder_path):
-            os.mkdir(folder_path)
-        dst_folder = os.path.join(folder_path, "batches")
-        print("Saving batches to", dst_folder)
-        save_batches_to_disk(ds_gen, dst_folder)
+    bags = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
+    failed_bags = []
+    for bag_name in os.listdir(bags):
+        try:
+            bag_path = os.path.join(bags, bag_name)
+            ds_gen = dataset_generator_from_bag(bag_path, "/cam0/events", "/cam0/image_raw", 3, n_temp_bins=10)
+            folder_path = os.path.join(r"G:\VM\Shared Folder\preprocess_800_0.5", bag_name.replace(".bag", ""))
+            if not os.path.exists(folder_path):
+                os.mkdir(folder_path)
+            dst_folder = os.path.join(folder_path, "batches")
+            print("Saving batches to", dst_folder)
+            save_batches_to_disk(ds_gen, dst_folder)
+        except:
+            failed_bags.append(bag_name)
+    if failed_bags:
+        print("The following bags have failed:")
+        print("\n".join(failed_bags))
