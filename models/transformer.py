@@ -1,6 +1,7 @@
 import math
 from typing import Tuple
 import torch
+import pytorch_lightning as pl
 import cv2
 
 
@@ -175,7 +176,7 @@ class PatchExtractor(torch.nn.Module):
         # output shape = (batch, channels * n_patches, h * w)
         return x
 
-class VisionTransformer(torch.nn.Module):
+class VisionTransformer(pl.LightningModule):
     def __init__(
         self,
         input_shape: Tuple[int, int, int],
@@ -184,11 +185,15 @@ class VisionTransformer(torch.nn.Module):
         heads: int,
         layers_number: int,
         use_linear_proj: bool,
+        lr: float
     ):
         super().__init__()
+        self.save_hyperparameters()
+
         self.input_shape = input_shape
         self.p_h, self.p_w = patch_size
         self.use_linear_proj = use_linear_proj
+        self.lr = lr
 
         self.bins, self.h, self.w = self.input_shape
         self.n_patch_x = self.w // self.p_w
@@ -225,22 +230,22 @@ class VisionTransformer(torch.nn.Module):
         #     self.transp_convs.append(tconv)
 
         self.convolutions = torch.nn.Sequential(
-            torch.nn.Conv2d(self.bins, 32, (3, 3), padding="same"),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 32, (3, 3), padding="same"),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 3, (3, 3), padding="same"),
+            torch.nn.Conv2d(self.bins, 64, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 64, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 64, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 64, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 64, (3, 3), padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 3, (3, 3), padding="same"),
         )
         # self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
         self.sigmoid = torch.nn.Sigmoid()
@@ -290,3 +295,32 @@ class VisionTransformer(torch.nn.Module):
         raw_img = self(events)[0]
         color_img = cv2.demosaicing(raw_img, cv2.COLOR_BayerRGGB2RGB)
         return color_img
+    
+    def training_step(self, train_batch, batch_idx):
+        X, y = train_batch
+        X = X[:, :, :self.h, :self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, :self.h, :self.w]
+
+        criterion = torch.nn.MSELoss()
+        
+        model_output = self(X)
+        loss = criterion(model_output, y)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        X, y = val_batch
+        X = X[:, :, :self.h, :self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, :self.h, :self.w]
+
+        criterion = torch.nn.MSELoss()
+        
+        model_output = self(X)
+        loss = criterion(model_output, y)
+        self.log("val_loss", loss)
+        return loss
+
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
