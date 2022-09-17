@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from utils import format_current_date
 
+
 def train_generic(
     model: torch.nn.Module,
     device: str,
@@ -25,19 +26,21 @@ def train_generic(
     # Log initialization
     if log_path:
         now = format_current_date()
-        
+
         experiment_dir = os.path.join(log_path, now)
         os.mkdir(experiment_dir)
 
         if save_imgs_after_n_epochs:
             os.mkdir(os.path.join(experiment_dir, "imgs"))
 
-        with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8") as log_file:
+        with open(
+            os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8"
+        ) as log_file:
             log = {
-                "model_class": model.__class__.__name__, 
+                "model_class": model.__class__.__name__,
                 "params": params,
                 "creation_date": now,
-                "device": device
+                "device": device,
             }
             log_epochs = []
             json.dump(log, log_file, indent=2)
@@ -49,7 +52,7 @@ def train_generic(
 
     # This is going to be train loss if no valid data has been provided
     best_loss = -1
-    
+
     for epoch in range(params["n_epochs"]):
         save_epochs = save_imgs_after_n_epochs
         save_imgs = save_epochs and (epoch + 1) % save_epochs == 0
@@ -84,7 +87,7 @@ def train_generic(
         dataset_time_var = time.time()
         for step, batch in enumerate(train_ds):
             batch_losses = []
-            times["dataset_time"] += time.time() - dataset_time_var          
+            times["dataset_time"] += time.time() - dataset_time_var
 
             if input_process_fn:
                 t = time.time()
@@ -92,12 +95,12 @@ def train_generic(
                 times["input_process_time"] += time.time() - t
             else:
                 X, y = batch
-            
+
             t = time.time()
             X = X.to(device)
             y = y.to(device)
             times["to_device_time"] += time.time() - t
-            
+
             t = time.time()
             model_output = model(X)
             times["inference_time"] += time.time() - t
@@ -116,7 +119,6 @@ def train_generic(
                 model_output = output_process_fn(model_output)
                 times["output_process_time"] += time.time() - t
 
-
             t = time.time()
             loss: torch.Tensor = criterion(model_output, y)
             times["compute_loss_time"] += time.time() - t
@@ -132,11 +134,14 @@ def train_generic(
             batch_losses.append(detached_loss)
             times["append_losses_time"] += time.time() - t
 
-
             t = time.time()
             print(
                 "\rEpoch {}/{} Step {}/{} Loss: {:.5f}".format(
-                    epoch + 1, params["n_epochs"], step + 1, len(train_ds), detached_loss
+                    epoch + 1,
+                    params["n_epochs"],
+                    step + 1,
+                    len(train_ds),
+                    detached_loss,
                 ),
                 end="",
             )
@@ -158,7 +163,8 @@ def train_generic(
                 len(train_ds),
                 train_loss,
                 int(elapsed_time),
-            ), end=""
+            ),
+            end="",
         )
 
         # Validation step
@@ -172,10 +178,10 @@ def train_generic(
                         X, y = input_process_fn(batch)
                     else:
                         X, y = batch
-                    
+
                     X = X.to(device)
                     y = y.to(device)
-                    
+
                     model_output = model(X)
 
                     val_imgs_out = []
@@ -207,13 +213,12 @@ def train_generic(
                 model_filename = f"model.pt"
                 model_path = os.path.join(experiment_dir, model_filename)
                 torch.save(model.state_dict(), model_path)
-               
+
                 best_loss = current_loss
-                
-                log.update({"best_model": {
-                    "epoch": epoch,
-                    loss_key: float(current_loss)
-                }})
+
+                log.update(
+                    {"best_model": {"epoch": epoch, loss_key: float(current_loss)}}
+                )
             times["save_best_model_time"] += time.time() - t
 
         # Optionally save images
@@ -239,7 +244,9 @@ def train_generic(
 
         # Save log
         if log_path:
-            with open(os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8") as log_file:
+            with open(
+                os.path.join(experiment_dir, "metadata.json"), "w", encoding="utf8"
+            ) as log_file:
                 epoch_info = {
                     "train_loss": float(train_loss),
                     "elapsed_seconds": int(elapsed_time),
@@ -260,6 +267,7 @@ def train_generic(
         # for name, value in times.items():
         #     print(name.replace("_", " ").title(), value)
 
+
 def train_unet(
     model: torch.nn.Module,
     device: str,
@@ -279,7 +287,17 @@ def train_unet(
         input_tensors = torch.hstack((input_images, events_tensors))
         return input_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model, save_times=save_times)
+    train_generic(
+        model,
+        device,
+        train_ds,
+        params,
+        log_path=log_path,
+        input_process_fn=in_fn,
+        valid_ds=valid_ds,
+        save_best_model=save_best_model,
+        save_times=save_times,
+    )
 
 
 def train_transformer(
@@ -292,14 +310,24 @@ def train_transformer(
     save_best_model: bool = False,
     save_times: bool = False,
 ):
-
     def in_fn(batch):
         (input_images, events_tensors), ground_truth_images = batch
         ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)
         # events_tensors: (batch, bins, height, width)
         return events_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model, save_times=save_times)
+    train_generic(
+        model,
+        device,
+        train_ds,
+        params,
+        log_path=log_path,
+        input_process_fn=in_fn,
+        valid_ds=valid_ds,
+        save_best_model=save_best_model,
+        save_times=save_times,
+    )
+
 
 def train_autoencoder(
     model: torch.nn.Module,
@@ -311,13 +339,23 @@ def train_autoencoder(
     save_best_model: bool = False,
     save_times: bool = False,
 ):
-
     def in_fn(sample):
         (_, batch), _ = sample
         batch = torch.unsqueeze(torch.from_numpy(batch), 1)
         return batch, batch
 
-    train_generic(model, device, train_ds, params, log_path=log_path, input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model, save_times=save_times)        
+    train_generic(
+        model,
+        device,
+        train_ds,
+        params,
+        log_path=log_path,
+        input_process_fn=in_fn,
+        valid_ds=valid_ds,
+        save_best_model=save_best_model,
+        save_times=save_times,
+    )
+
 
 def train_vit(
     model: torch.nn.Module,
@@ -330,20 +368,29 @@ def train_vit(
     save_imgs_after_n_epochs: int = None,
     save_times: bool = False,
 ):
-
     def in_fn(batch):
         # Old dataset format
         # (input_images, events_tensors), ground_truth_images = batch
         # events_tensors = events_tensors[:, :, :256, :256]
         # ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :256, :256]
-        
+
         events_tensors, ground_truth_images = batch
         events_tensors = events_tensors[:, :, :128, :128]
-        ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[:, :, :128, :128]
-        
+        ground_truth_images = torch.einsum("bhwc -> bchw", ground_truth_images)[
+            :, :, :128, :128
+        ]
 
         return events_tensors, ground_truth_images
 
-    train_generic(model, device, train_ds, params, log_path=log_path, 
-    input_process_fn=in_fn, valid_ds=valid_ds, save_best_model=save_best_model, 
-    save_imgs_after_n_epochs=save_imgs_after_n_epochs, save_times=save_times)
+    train_generic(
+        model,
+        device,
+        train_ds,
+        params,
+        log_path=log_path,
+        input_process_fn=in_fn,
+        valid_ds=valid_ds,
+        save_best_model=save_best_model,
+        save_imgs_after_n_epochs=save_imgs_after_n_epochs,
+        save_times=save_times,
+    )

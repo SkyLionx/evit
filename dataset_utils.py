@@ -120,20 +120,21 @@ def inspect_dataset(dataset_path: str):
     for topic_name in topics_info.keys():
         messages = iter(bag.read_messages(topics=[topic_name]))
         _topic, msg, _t = next(messages)
-        
+
         print(topic_name)
         print(str(msg)[:200] + "...")
         print()
 
     bag.close()
 
-def inspect_message_timestamps(dataset_path: str, events_topic="/dvs/events", images_topic="/dvs/image_color"):
+
+def inspect_message_timestamps(
+    dataset_path: str, events_topic="/dvs/events", images_topic="/dvs/image_color"
+):
     i = 0
     print("{:5}{:20}{}".format("", "Topic Name", "Event Timestamp"))
     with rosbag.Bag(dataset_path) as b:
-        for topic, msg, _ in b.read_messages(
-            topics=[events_topic, images_topic]
-        ):
+        for topic, msg, _ in b.read_messages(topics=[events_topic, images_topic]):
             print("{:3}) {:20}{}".format(i, topic, msg.header.stamp.to_sec()))
 
             if topic == events_topic:
@@ -149,7 +150,12 @@ def inspect_message_timestamps(dataset_path: str, events_topic="/dvs/events", im
 
 
 # Load dataset as Pandas dataframes
-def load_bag_as_dataframes(dataset_path: str, events_topic="/dvs/events", images_topic="/dvs/image_color", max_events: int=None):
+def load_bag_as_dataframes(
+    dataset_path: str,
+    events_topic="/dvs/events",
+    images_topic="/dvs/image_color",
+    max_events: int = None,
+):
     """
     Load the dataset from a rosbag file and return two pandas dataframe with events and images.
     """
@@ -187,7 +193,7 @@ def load_bag_as_dataframes(dataset_path: str, events_topic="/dvs/events", images
                 n_events += 1
                 if n_events == max_events:
                     break
-        
+
         if n_events == max_events:
             break
 
@@ -289,7 +295,11 @@ DatasetBatch = Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]
 
 
 def dataset_generator_from_bag(
-    bag_path: str, events_topic="/dvs/events", image_topic="/dvs/image_color", channels=3, n_temp_bins: int = 10
+    bag_path: str,
+    events_topic="/dvs/events",
+    image_topic="/dvs/image_color",
+    channels=3,
+    n_temp_bins: int = 10,
 ) -> Generator[DatasetBatch, None, None]:
     # Preload image frames to get timestamps
     images = []
@@ -305,7 +315,9 @@ def dataset_generator_from_bag(
     last_ts = images[0][0]
     for i in range(1, len(images)):
         current_ts = images[i][0]
-        assert last_ts < current_ts, "Images timestamps are not ordered ({} >= {})".format(last_ts, current_ts)
+        assert (
+            last_ts < current_ts
+        ), "Images timestamps are not ordered ({} >= {})".format(last_ts, current_ts)
         last_ts = current_ts
 
     current_img_idx = 1
@@ -334,7 +346,8 @@ def dataset_generator_from_bag(
                         events_batch, w, h, n_temp_bins=n_temp_bins
                     )
                     yield (
-                        event_grid, images[current_img_idx - 1][1],
+                        event_grid,
+                        images[current_img_idx - 1][1],
                     )
                     if current_img_idx == len(images):
                         return
@@ -353,6 +366,7 @@ def dataset_generator_from_batches(path: str) -> DatasetBatch:
         if batch_file.endswith(".pt"):
             yield torch.load(os.path.join(path, batch_file))
 
+
 def get_sensor_size(bag_path: str, image_topic: str) -> Tuple[int, int]:
     with rosbag.Bag(bag_path) as bag:
         _, msg, _ = next(iter(bag.read_messages(topics=[image_topic])))
@@ -360,11 +374,20 @@ def get_sensor_size(bag_path: str, image_topic: str) -> Tuple[int, int]:
     return w, h
 
 
-def inspect_events_bag(bag_path: str, video_name: str, events_topic: str, image_topic: str, image_channels, n_bins: int=10):
+def inspect_events_bag(
+    bag_path: str,
+    video_name: str,
+    events_topic: str,
+    image_topic: str,
+    image_channels,
+    n_bins: int = 10,
+):
     w, h = get_sensor_size(bag_path, image_topic)
-    
-    gen = dataset_generator_from_bag(bag_path, events_topic, image_topic, image_channels, n_bins)
-    
+
+    gen = dataset_generator_from_bag(
+        bag_path, events_topic, image_topic, image_channels, n_bins
+    )
+
     fourcc = cv.VideoWriter_fourcc(*"MP4V")
     out = cv.VideoWriter(video_name, fourcc, 30, (w * 2, h))
 
@@ -377,14 +400,19 @@ def inspect_events_bag(bag_path: str, video_name: str, events_topic: str, image_
     finally:
         out.release()
 
-if __name__ == "__main__":    
+
+if __name__ == "__main__":
     bags = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
     failed_bags = []
     for bag_name in os.listdir(bags):
         try:
             bag_path = os.path.join(bags, bag_name)
-            ds_gen = dataset_generator_from_bag(bag_path, "/cam0/events", "/cam0/image_raw", 3, n_temp_bins=10)
-            folder_path = os.path.join(r"G:\VM\Shared Folder\preprocess_800_0.5", bag_name.replace(".bag", ""))
+            ds_gen = dataset_generator_from_bag(
+                bag_path, "/cam0/events", "/cam0/image_raw", 3, n_temp_bins=10
+            )
+            folder_path = os.path.join(
+                r"G:\VM\Shared Folder\preprocess_800_0.5", bag_name.replace(".bag", "")
+            )
             if not os.path.exists(folder_path):
                 os.mkdir(folder_path)
             dst_folder = os.path.join(folder_path, "batches")

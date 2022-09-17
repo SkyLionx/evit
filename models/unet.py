@@ -1,5 +1,6 @@
 import torch
 
+
 class EventsToImagesUNet(torch.nn.Module):
     def __init__(self, input_channels):
         super(EventsToImagesUNet, self).__init__()

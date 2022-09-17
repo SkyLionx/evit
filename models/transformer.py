@@ -24,7 +24,7 @@ class PositionalEncoding(torch.nn.Module):
         Args:
             x: Tensor, shape [batch_size, seq_len, embedding_dim]
         """
-        x = x + self.pe[:x.size(0)]
+        x = x + self.pe[: x.size(0)]
         return self.dropout(x)
 
 
@@ -153,6 +153,7 @@ class EventEncoderTransformer(torch.nn.Module):
         y = y.reshape(batches, channels, height, width)
         return y
 
+
 class PatchExtractor(torch.nn.Module):
     def __init__(self, patch_size: Tuple[int, int]):
         super().__init__()
@@ -162,7 +163,9 @@ class PatchExtractor(torch.nn.Module):
         batch, channels, h, w = x.shape
 
         x = torch.einsum("bchw -> bhwc", x)
-        x = x.reshape((batch, h // self.p_h, self.p_h, w // self.p_w, self.p_w, channels))
+        x = x.reshape(
+            (batch, h // self.p_h, self.p_h, w // self.p_w, self.p_w, channels)
+        )
 
         x = x.swapaxes(2, 3)
         x = x.reshape((batch, -1, self.p_h, self.p_w, channels))
@@ -176,6 +179,7 @@ class PatchExtractor(torch.nn.Module):
         # output shape = (batch, channels * n_patches, h * w)
         return x
 
+
 class VisionTransformer(pl.LightningModule):
     def __init__(
         self,
@@ -185,7 +189,7 @@ class VisionTransformer(pl.LightningModule):
         heads: int,
         layers_number: int,
         use_linear_proj: bool,
-        lr: float
+        lr: float,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -202,12 +206,14 @@ class VisionTransformer(pl.LightningModule):
         self.token_dim = self.p_w * self.p_h
 
         self.patch_extractor = PatchExtractor(patch_size)
-        
+
         if use_linear_proj:
             self.linear_proj = torch.nn.Linear(self.token_dim, encoding_size)
             self.token_dim = encoding_size
 
-        self.pe = PositionalEncoding(self.token_dim, max_len=self.n_patch_x * self.n_patch_y * self.bins)
+        self.pe = PositionalEncoding(
+            self.token_dim, max_len=self.n_patch_x * self.n_patch_y * self.bins
+        )
         enc_layer = torch.nn.TransformerEncoderLayer(
             d_model=encoding_size, nhead=heads, batch_first=True
         )
@@ -280,7 +286,7 @@ class VisionTransformer(pl.LightningModule):
 
         x = self.convolutions(x)
         x = self.sigmoid(x)
-        return x  
+        return x
 
     def assemble_image(self, x: torch.Tensor) -> torch.Tensor:
         batch, n, d = x.shape
@@ -295,14 +301,14 @@ class VisionTransformer(pl.LightningModule):
         raw_img = self(events)[0]
         color_img = cv2.demosaicing(raw_img, cv2.COLOR_BayerRGGB2RGB)
         return color_img
-    
+
     def training_step(self, train_batch, batch_idx):
         X, y = train_batch
-        X = X[:, :, :self.h, :self.w]
-        y = torch.einsum("bhwc -> bchw", y)[:, :, :self.h, :self.w]
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
         criterion = torch.nn.MSELoss()
-        
+
         model_output = self(X)
         loss = criterion(model_output, y)
         self.log("train_loss", loss)
@@ -310,16 +316,15 @@ class VisionTransformer(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         X, y = val_batch
-        X = X[:, :, :self.h, :self.w]
-        y = torch.einsum("bhwc -> bchw", y)[:, :, :self.h, :self.w]
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
         criterion = torch.nn.MSELoss()
-        
+
         model_output = self(X)
         loss = criterion(model_output, y)
         self.log("val_loss", loss)
         return loss
-
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)

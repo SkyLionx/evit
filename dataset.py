@@ -4,8 +4,16 @@ import numpy as np
 from typing import Tuple, List
 import abc
 
+
 class CustomDataset(abc.ABC, torch.utils.data.Dataset):
-    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None, sequences: List[str] = []):
+    def __init__(
+        self,
+        dataset_path: str,
+        limit: int = None,
+        preload_to_RAM: bool = False,
+        crop_size: Tuple[int, int] = None,
+        sequences: List[str] = [],
+    ):
         super().__init__()
         self.dataset_path = dataset_path
         self.limit = limit
@@ -42,14 +50,22 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
             sample = torch.load(file)
             sample = self.pre_process(sample)
         return sample
-    
+
     @abc.abstractmethod
     def pre_process(self, batch):
         pass
 
-class CEDDataset(CustomDataset):
 
-    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None, sequences: List[str] = [], ignore_input_image: bool = False):
+class CEDDataset(CustomDataset):
+    def __init__(
+        self,
+        dataset_path: str,
+        limit: int = None,
+        preload_to_RAM: bool = False,
+        crop_size: Tuple[int, int] = None,
+        sequences: List[str] = [],
+        ignore_input_image: bool = False,
+    ):
         super().__init__(dataset_path, limit, preload_to_RAM, crop_size, sequences)
         self.ignore_input_image = ignore_input_image
 
@@ -61,7 +77,7 @@ class CEDDataset(CustomDataset):
             in_img = in_img[:h, :w, :]
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
-        
+
         in_img = (in_img / 255.0).astype(np.float32)
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
@@ -70,10 +86,9 @@ class CEDDataset(CustomDataset):
             return events, out_img
         else:
             return (in_img, events), out_img
-    
+
 
 class DIV2KDataset(CustomDataset):
-
     def pre_process(self, batch):
         events, out_img = batch
 
@@ -81,7 +96,7 @@ class DIV2KDataset(CustomDataset):
             w, h = self.crop_size
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
-        
+
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
         return events, out_img

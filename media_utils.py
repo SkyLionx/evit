@@ -7,11 +7,14 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
+
 def norm_img(img: np.ndarray):
     return img.astype(np.float32) / 255.0
 
+
 def denorm_img(img: np.ndarray):
     return (img * 255).astype(np.uint8)
+
 
 def plot_img(img: np.ndarray, grid=False, real_ticks=False, show=True, cmap="gray"):
     if real_ticks:
@@ -22,11 +25,14 @@ def plot_img(img: np.ndarray, grid=False, real_ticks=False, show=True, cmap="gra
     if show:
         plt.show()
 
-def plot_square(imgs: Iterable[np.ndarray], titles: Iterable[str]=None, size: int = 4):
+
+def plot_square(
+    imgs: Iterable[np.ndarray], titles: Iterable[str] = None, size: int = 4
+):
     n = len(imgs)
     cols = int(np.ceil(np.sqrt(n)))
     rows = int(np.floor(np.sqrt(n)))
-    fig, axs = plt.subplots(rows, cols, figsize=(cols*size, rows*size))
+    fig, axs = plt.subplots(rows, cols, figsize=(cols * size, rows * size))
     for i, ax in enumerate(axs.flatten()):
 
         if i >= len(imgs):
@@ -47,11 +53,14 @@ def image_from_buffer(
         np.frombuffer(data, dtype=np.uint8).reshape(height, width, channels).squeeze()
     )
 
+
 def bgr_to_rgb(img: np.ndarray) -> np.ndarray:
     return img[..., ::-1]
 
+
 def rgb_to_bgr(img: np.ndarray) -> np.ndarray:
     return img[..., ::-1]
+
 
 def save_video(path, frames, fps):
     height, width = frames[0].shape[:2]
@@ -68,11 +77,12 @@ def save_video(path, frames, fps):
 def save_video_tensors(path, frames, fps):
     frames = torch.stack(frames)
     assert (
-       frames.min() >= 0.0 and frames.max() <= 1.0
+        frames.min() >= 0.0 and frames.max() <= 1.0
     ), "frames range should be in [0, 1]"
     height, width = frames[0].shape[:2]
     frames = [(frame * 255).numpy().astype(np.uint8) for frame in frames]
     save_video(path, frames, fps)
+
 
 def save_predicted_video(model, device, dataloader, output_name, fps=30):
     frames = []
@@ -84,7 +94,10 @@ def save_predicted_video(model, device, dataloader, output_name, fps=30):
             frames.append(image.detach().cpu())
     save_video_tensors(output_name, frames, fps)
 
-def save_events_frames_visualization(sensor_size, filename, dataloader, model=None, fps=30):
+
+def save_events_frames_visualization(
+    sensor_size, filename, dataloader, model=None, fps=30
+):
     w, h = sensor_size
     fourcc = cv2.VideoWriter_fourcc(*"MP4V")
     columns = 2 if model is None else 3
@@ -98,16 +111,14 @@ def save_events_frames_visualization(sensor_size, filename, dataloader, model=No
             gt_img = img_out[i]
             for bin_ in batch:
                 event_frame = torch.repeat_interleave(bin_.reshape(h, w, 1), 3, dim=2)
-                
+
                 images = [event_frame]
                 if model is not None:
                     images.append(torch.einsum("chw -> hwc", pred[i]))
                 images.append(gt_img)
 
                 frame = np.hstack(images)
-                frame = cv2.cvtColor(
-                    (frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
-                )
+                frame = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
                 out.write(frame)
 
     out.release()
