@@ -1,10 +1,12 @@
 import torch
 import os
 import numpy as np
-from typing import Tuple
+from typing import Tuple, List
+import abc
 
-class CEDDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None):
+class CustomDataset(abc.ABC, torch.utils.data.Dataset):
+    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None, sequences: List[str] = []):
+        super().__init__()
         self.dataset_path = dataset_path
         self.limit = limit
         self.preload_to_RAM = preload_to_RAM
@@ -12,41 +14,74 @@ class CEDDataset(torch.utils.data.Dataset):
         self.files_list = []
         self.data = []
 
-        for file in sorted(os.listdir(dataset_path)):
-            if limit and len(self.files_list) >= limit:
-              break
-            if file.endswith(".pt"):
-                file_path = os.path.join(dataset_path, file)
-                self.files_list.append(file_path)
-                if self.preload_to_RAM:
-                    sample = self.pre_process(*torch.load(file_path))
-                    self.data.append(sample)
+        if not sequences:
+            sequences = os.listdir(dataset_path)
+
+        for sequence_folder in sorted(sequences):
+            seq_path = os.path.join(dataset_path, sequence_folder)
+            if os.path.exists(os.path.join(seq_path, "batches")):
+                seq_path = os.path.join(seq_path, "batches")
+            for file in os.listdir(seq_path):
+                if limit and len(self.files_list) >= limit:
+                    break
+                if file.endswith(".pt"):
+                    file_path = os.path.join(seq_path, file)
+                    self.files_list.append(file_path)
+                    if self.preload_to_RAM:
+                        sample = self.pre_process(torch.load(file_path))
+                        self.data.append(sample)
 
     def __len__(self):
         return len(self.files_list)
 
     def __getitem__(self, idx: int):
-        file = self.files_list[idx]
-        
-        # Old dataset format
-        # (in_img, events), out_img = torch.load(file)
-        # in_img = (in_img[:256, :336, :] / 255.0).astype(np.float32)
-        # out_img = (out_img[:256, :336, :] / 255.0).astype(np.float32)
-        # return (in_img, events[:, :256, :336].astype(np.float32)), out_img
-
         if self.preload_to_RAM:
-            events, out_img = self.data[idx]
+            sample = self.data[idx]
         else:
-            events, out_img = torch.load(file)
-            events, out_img = self.pre_process(events, out_img)
-        return events, out_img
+            file = self.files_list[idx]
+            sample = torch.load(file)
+            sample = self.pre_process(sample)
+        return sample
+    
+    @abc.abstractmethod
+    def pre_process(self, batch):
+        pass
 
-    def pre_process(self, events, out_img):
+class CEDDataset(CustomDataset):
+
+    def __init__(self, dataset_path: str, limit: int = None, preload_to_RAM: bool = False, crop_size: Tuple[int, int] = None, sequences: List[str] = [], ignore_input_image: bool = False):
+        super().__init__(dataset_path, limit, preload_to_RAM, crop_size, sequences)
+        self.ignore_input_image = ignore_input_image
+
+    def pre_process(self, batch):
+        (in_img, events), out_img = batch
+
+        if self.crop_size:
+            w, h = self.crop_size
+            in_img = in_img[:h, :w, :]
+            out_img = out_img[:h, :w, :]
+            events = events[:, :h, :w]
+        
+        in_img = (in_img / 255.0).astype(np.float32)
+        out_img = (out_img / 255.0).astype(np.float32)
+        events = events.astype(np.float32)
+
+        if self.ignore_input_image:
+            return events, out_img
+        else:
+            return (in_img, events), out_img
+    
+
+class DIV2KDataset(CustomDataset):
+
+    def pre_process(self, batch):
+        events, out_img = batch
+
         if self.crop_size:
             w, h = self.crop_size
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
-
+        
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
         return events, out_img
