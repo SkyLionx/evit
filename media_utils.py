@@ -75,14 +75,42 @@ def save_video_tensors(path, frames, fps):
     save_video(path, frames, fps)
 
 def save_predicted_video(model, device, dataloader, output_name, fps=30):
-  frames = []
-  for (img_in, events), img_out in tqdm(dataloader):
-      with torch.no_grad():
-          output = model(events.to(device))
-      image_output = torch.einsum("bchw -> bhwc", output).squeeze()
-      for image in image_output:
-          frames.append(image.detach().cpu())
-  save_video_tensors(output_name, frames, fps)
+    frames = []
+    for events, img_out in tqdm(dataloader):
+        with torch.no_grad():
+            output = model(events.to(device))
+        image_output = torch.einsum("bchw -> bhwc", output)
+        for image in image_output:
+            frames.append(image.detach().cpu())
+    save_video_tensors(output_name, frames, fps)
+
+def save_events_frames_visualization(sensor_size, filename, dataloader, model=None):
+    w, h = sensor_size
+    fourcc = cv2.VideoWriter_fourcc(*"MP4V")
+    columns = 2 if model is None else 3
+    out = cv2.VideoWriter(filename, fourcc, 30, (w * columns, h))
+
+    for events, img_out in tqdm(dataloader):
+        if model is not None:
+            pred = model(events.to(model.device)).detach().cpu()
+
+        for i, batch in enumerate(events):
+            gt_img = img_out[i]
+            for bin_ in batch:
+                event_frame = torch.repeat_interleave(bin_.reshape(h, w, 1), 3, dim=2)
+                
+                images = [event_frame]
+                if model is not None:
+                    images.append(torch.einsum("chw -> hwc", pred[i]))
+                images.append(gt_img)
+
+                frame = np.hstack(images)
+                frame = cv2.cvtColor(
+                    (frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
+                )
+                out.write(frame)
+
+    out.release()
 
 
 def get_empty_images(
