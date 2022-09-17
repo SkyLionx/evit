@@ -84,11 +84,11 @@ def save_predicted_video(model, device, dataloader, output_name, fps=30):
             frames.append(image.detach().cpu())
     save_video_tensors(output_name, frames, fps)
 
-def save_events_frames_visualization(sensor_size, filename, dataloader, model=None):
+def save_events_frames_visualization(sensor_size, filename, dataloader, model=None, fps=30):
     w, h = sensor_size
     fourcc = cv2.VideoWriter_fourcc(*"MP4V")
     columns = 2 if model is None else 3
-    out = cv2.VideoWriter(filename, fourcc, 30, (w * columns, h))
+    out = cv2.VideoWriter(filename, fourcc, fps, (w * columns, h))
 
     for events, img_out in tqdm(dataloader):
         if model is not None:
