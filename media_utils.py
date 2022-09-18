@@ -124,6 +124,22 @@ def save_events_frames_visualization(
     out.release()
 
 
+def predict_n_images(dataset, n_imgs, model):
+    eval_events = []
+
+    indexes = np.linspace(0, len(dataset) - 1, n_imgs).astype(np.int32)
+    for idx in indexes:
+        events, out_img = dataset[idx]
+        eval_events.append(torch.tensor(events))
+    eval_events = torch.stack(eval_events).to(model.device)
+
+    model.eval()
+    with torch.no_grad():
+        results = model(eval_events)
+        results = np.einsum("bchw -> bhwc", results.detach().cpu())
+    return results
+
+
 def get_empty_images(
     w: int, h: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
