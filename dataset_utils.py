@@ -374,6 +374,33 @@ def get_sensor_size(bag_path: str, image_topic: str) -> Tuple[int, int]:
     return w, h
 
 
+def inspect_events_generator(video_name: str, generator: Generator, fps: int = 30):
+    input_image = False
+    try:
+        (_, events), img_out = next(iter(generator))
+        input_image = True
+    except:
+        events, img_out = next(iter(generator))
+
+    h, w, _ = img_out.shape
+
+    fourcc = cv.VideoWriter_fourcc(*"MP4V")
+    out = cv.VideoWriter(video_name, fourcc, fps, (w * 2, h))
+
+    try:
+        for data in tqdm(generator):
+            if input_image:
+                (_, events), img_out = data
+            else:
+                events, img_out = data
+            for _bin in events:
+                _bin = np.repeat(_bin.reshape(h, w, 1), 3, axis=2)
+                frame = np.hstack((denorm_img(_bin), rgb_to_bgr(img_out)))
+                out.write(frame)
+    finally:
+        out.release()
+
+
 def inspect_events_bag(
     bag_path: str,
     video_name: str,
@@ -381,24 +408,17 @@ def inspect_events_bag(
     image_topic: str,
     image_channels,
     n_bins: int = 10,
+    fps: int = 30,
 ):
-    w, h = get_sensor_size(bag_path, image_topic)
-
     gen = dataset_generator_from_bag(
         bag_path, events_topic, image_topic, image_channels, n_bins
     )
+    inspect_events_generator(video_name, gen, fps=fps)
 
-    fourcc = cv.VideoWriter_fourcc(*"MP4V")
-    out = cv.VideoWriter(video_name, fourcc, 30, (w * 2, h))
 
-    try:
-        for events, img_out in gen:
-            for bin in events:
-                bin = np.repeat(bin.reshape(h, w, 1), 3, axis=2)
-                frame = np.hstack((denorm_img(bin), rgb_to_bgr(img_out)))
-                out.write(frame)
-    finally:
-        out.release()
+def inspect_events_batches(path: str, video_name: str, fps: int = 30):
+    gen = dataset_generator_from_batches(path)
+    inspect_events_generator(video_name, gen, fps=fps)
 
 
 if __name__ == "__main__":
