@@ -9,15 +9,25 @@ from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
 
 def is_using_colab() -> bool:
+    """Return if running on the Colab platform."""
     return "google.colab" in str(get_ipython())
 
 
 def format_current_date() -> str:
+    """
+    Return the current date using the format YY-MM-DD hh-mm-ss
+    which is Windows-friendly for folder names.
+    """
     today = datetime.datetime.today()
     return today.strftime("%Y-%m-%d %H-%M-%S")
 
 
 class LogImagesCallback(pl.Callback):
+    """
+    Callback to be used with the TensorBoard logger in order to save training and
+    validations images outputs during training.
+    """
+
     def __init__(
         self,
         train_batch: torch.tensor,
@@ -25,9 +35,7 @@ class LogImagesCallback(pl.Callback):
         n: int = 5,
         n_epochs: int = 5,
     ):
-        """
-        Uses the TensorBoard logger to save `n` images after every `n_epochs`
-        """
+        """Log `n` images from the `train_batch` and `valid_batch` after every `n_epochs`"""
         super().__init__()
         self.train_batch = train_batch
         self.valid_batch = valid_batch
@@ -47,8 +55,12 @@ class LogImagesCallback(pl.Callback):
         train_out = pl_module(train_X[: self.n].to(device=pl_module.device))
         valid_out = pl_module(valid_X[: self.n].to(device=pl_module.device))
 
-        train_figs = [self.create_plot(train_out[i], train_y[i]) for i in range(self.n)]
-        valid_figs = [self.create_plot(valid_out[i], valid_y[i]) for i in range(self.n)]
+        train_figs = [
+            self._create_plot(train_out[i], train_y[i]) for i in range(self.n)
+        ]
+        valid_figs = [
+            self._create_plot(valid_out[i], valid_y[i]) for i in range(self.n)
+        ]
 
         trainer.logger.experiment.add_figure(f"train", train_figs, epoch)
         trainer.logger.experiment.add_figure(f"valid", valid_figs, epoch)
@@ -56,7 +68,7 @@ class LogImagesCallback(pl.Callback):
         for fig in train_figs + valid_figs:
             plt.close(fig)
 
-    def create_plot(self, out, gt):
+    def _create_plot(self, out, gt):
         out = torch.permute(out, (1, 2, 0)).detach().cpu().numpy()
         gt = gt.detach().cpu().numpy()
 
@@ -75,6 +87,10 @@ class LogImagesCallback(pl.Callback):
 
 
 class KerasProgressBar(ProgressBarBase):
+    """
+    Textual progress bar that emulates the Keras progress bar
+    """
+
     def __init__(self, hide_v_num=True):
         super().__init__()
 
