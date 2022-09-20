@@ -367,6 +367,68 @@ def dataset_generator_from_batches(path: str) -> DatasetBatch:
             yield torch.load(os.path.join(path, batch_file))
 
 
+def rosbag_images_generator(
+    bag: rosbag.Bag, image_topic: str, crop_size: Tuple[int, int] = None
+):
+    _, msg, _ = next(iter(bag.read_messages(topics=[image_topic])))
+    w, h = msg.width, msg.height
+    channels = 1 if "mono" in msg.encoding else 3
+
+    for _, msg, _ in bag.read_messages(topics=[image_topic]):
+        cur_image_ts = msg.header.stamp.to_sec()
+        image = bgr_to_rgb(image_from_buffer(msg.data, w, h, channels))
+        if crop_size:
+            image = image[: crop_size[1], : crop_size[0]]
+        yield cur_image_ts, image
+
+
+def dataset_generator_from_bag_n_events(
+    bag_path: str,
+    n_events: int,
+    events_topic="/dvs/events",
+    image_topic="/dvs/image_color",
+    n_temp_bins: int = 10,
+    crop_size: Tuple[int, int] = None,
+) -> Generator[DatasetBatch, None, None]:
+
+    if crop_size:
+        w, h = crop_size
+    else:
+        w, h = get_sensor_size(bag_path, image_topic)
+
+    print("width %s height %s" % (w, h))
+
+    with rosbag.Bag(bag_path) as bag:
+        images_gen = iter(rosbag_images_generator(bag, image_topic, crop_size))
+        image_ts, image = next(images_gen)
+        events_batch = []
+
+        msg_count = bag.get_message_count(events_topic)
+        for _, msg, _ in tqdm(
+            bag.read_messages(topics=[events_topic]), total=msg_count
+        ):
+            for event in msg.events:
+                if crop_size and (event.x >= w or event.y >= h):
+                    continue
+
+                event_obj = Event(event.x, event.y, event.ts.to_sec(), event.polarity)
+
+                if event_obj.timestamp <= image_ts:
+                    events_batch.append(event_obj)
+                else:
+                    if len(events_batch) >= n_events:
+                        event_grid = create_event_grid(
+                            events_batch, w, h, n_temp_bins=n_temp_bins
+                        )
+                        yield (event_grid, image)
+
+                    try:
+                        image_ts, image = next(images_gen)
+                        events_batch = [event_obj]
+                    except StopIteration:
+                        return
+
+
 def get_sensor_size(bag_path: str, image_topic: str) -> Tuple[int, int]:
     with rosbag.Bag(bag_path) as bag:
         _, msg, _ = next(iter(bag.read_messages(topics=[image_topic])))
