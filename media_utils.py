@@ -200,50 +200,6 @@ def save_predicted_video(
     save_video_tensors(video_path, frames, fps)
 
 
-def save_events_frames_view(
-    sensor_size: Tuple[int, int],
-    video_path: str,
-    dataloader: torch.utils.data.DataLoader,
-    model: Model = None,
-    fps: int = 30,
-):
-    """
-    Save a visualization that contains the events and the ground truth frames.
-    It can also optionally show the predicted images of a model.
-
-    Args:
-        sensor_size (Tuple[int, int]): width and height of the sensor.
-        video_path (str): path of the video that will be saved.
-        dataloader (torch.utils.data.DataLoader): dataloader to get the input data.
-        model (Model, optional): model used for inference. Defaults to None.
-        fps (int, optional): fps of the resulting video. Defaults to 30.
-    """
-    w, h = sensor_size
-    fourcc = cv2.VideoWriter_fourcc(*"MP4V")
-    columns = 2 if model is None else 3
-    out = cv2.VideoWriter(video_path, fourcc, fps, (w * columns, h))
-
-    for events, img_out in tqdm(dataloader):
-        if model is not None:
-            pred = model(events.to(model.device)).detach().cpu()
-
-        for i, batch in enumerate(events):
-            gt_img = img_out[i]
-            for bin_ in batch:
-                event_frame = torch.repeat_interleave(bin_.reshape(h, w, 1), 3, dim=2)
-
-                images = [event_frame]
-                if model is not None:
-                    images.append(torch.einsum("chw -> hwc", pred[i]))
-                images.append(gt_img)
-
-                frame = np.hstack(images)
-                frame = rgb_to_bgr(denorm_img(frame))
-                out.write(frame)
-
-    out.release()
-
-
 def predict_n_images(
     dataset: torch.utils.data.Dataset, n_imgs: int, model: Model
 ) -> Iterable[np.ndarray]:
