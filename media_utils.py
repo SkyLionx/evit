@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
@@ -8,7 +8,7 @@ import torch
 import pytorch_lightning as pl
 from tqdm import tqdm
 
-Model = torch.nn.Module | pl.LightningModule
+Model = Union[torch.nn.Module, pl.LightningModule]
 
 
 def norm_img(img: np.ndarray) -> np.ndarray:
