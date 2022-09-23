@@ -3,6 +3,8 @@ from typing import Tuple
 import torch
 import pytorch_lightning as pl
 import cv2
+from torchvision.models import vgg19, VGG19_Weights
+from torchvision.models.feature_extraction import create_feature_extractor
 
 
 class PositionalEncoding(torch.nn.Module):
@@ -189,7 +191,9 @@ class VisionTransformer(pl.LightningModule):
         heads: int,
         layers_number: int,
         use_linear_proj: bool,
-        lr: float,
+        learning_rate: float,
+        use_LPIPS: bool = False,
+        vgg_layer: str = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -197,7 +201,14 @@ class VisionTransformer(pl.LightningModule):
         self.input_shape = input_shape
         self.p_h, self.p_w = patch_size
         self.use_linear_proj = use_linear_proj
-        self.lr = lr
+        self.lr = learning_rate
+
+        self.use_LPIPS = use_LPIPS
+        self.vgg_layer = vgg_layer
+        if use_LPIPS and not vgg_layer:
+            raise Exception(
+                "In order to use the LPIPS loss, you need to specify a vgg_layer."
+            )
 
         self.bins, self.h, self.w = self.input_shape
         self.n_patch_x = self.w // self.p_w
@@ -256,6 +267,18 @@ class VisionTransformer(pl.LightningModule):
         # self.final_conv = torch.nn.Conv2d(self.bins, 3, (3, 3), padding="same")
         self.sigmoid = torch.nn.Sigmoid()
 
+        if use_LPIPS:
+            vgg_weights = VGG19_Weights.IMAGENET1K_V1
+            vgg = vgg19(weights=vgg_weights)
+            vgg.eval()
+
+            # Freeze layers
+            for param in vgg.parameters():
+                param.requires_grad = False
+
+            self.vgg_preprocess = vgg_weights.transforms()
+            self.vgg_extractor = create_feature_extractor(vgg, [vgg_layer])
+
     def forward(self, x):
         batch, bins, h, w = x.shape
 
@@ -302,16 +325,28 @@ class VisionTransformer(pl.LightningModule):
         color_img = cv2.demosaicing(raw_img, cv2.COLOR_BayerRGGB2RGB)
         return color_img
 
+    def _extract_features(self, x):
+        return self.vgg_extractor(self.vgg_preprocess(x))[self.vgg_layer]
+
     def training_step(self, train_batch, batch_idx):
         X, y = train_batch
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
+        model_images = self(X)
+
         criterion = torch.nn.MSELoss()
 
-        model_output = self(X)
-        loss = criterion(model_output, y)
+        if self.use_LPIPS:
+            model_features = self._extract_features(model_images)
+            y_features = self._extract_features(y)
+
+            loss = criterion(model_features, y_features)
+        else:
+            loss = criterion(model_images, y)
+
         self.log("train_loss", loss)
+
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -319,11 +354,20 @@ class VisionTransformer(pl.LightningModule):
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
+        model_images = self(X)
+
         criterion = torch.nn.MSELoss()
 
-        model_output = self(X)
-        loss = criterion(model_output, y)
+        if self.use_LPIPS:
+            model_features = self._extract_features(model_images)
+            y_features = self._extract_features(y)
+
+            loss = criterion(model_features, y_features)
+        else:
+            loss = criterion(model_images, y)
+
         self.log("val_loss", loss)
+
         return loss
 
     def configure_optimizers(self):
