@@ -66,7 +66,7 @@ class LogImagesCallback(pl.Callback):
         trainer.logger.experiment.add_figure(f"valid", valid_figs, epoch)
 
         for fig in train_figs + valid_figs:
-            plt.close(fig)
+            fig.clear()
 
     def _create_plot(self, out, gt):
         out = torch.permute(out, (1, 2, 0)).detach().cpu().numpy()
