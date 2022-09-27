@@ -430,18 +430,18 @@ def dataset_generator_from_bag(
                 if event_obj.timestamp <= cur_image_ts:
                     events_batch.append(event_obj)
                 else:
-                    if not min_n_events and len(events_batch) == 0:
-                        print(
-                            "Warning, there are no events between two frames, skipping one."
-                        )
-                        continue
-
                     if not min_n_events or len(events_batch) >= min_n_events:
-                        event_grid = create_event_grid(
-                            events_batch, w, h, n_temp_bins=n_temp_bins
-                        )
 
-                        yield (event_grid, cur_image)
+                        if len(events_batch) == 0:
+                            print(
+                                "Warning, there are no events between two frames, skipping one."
+                            )
+                        else:
+                            event_grid = create_event_grid(
+                                events_batch, w, h, n_temp_bins=n_temp_bins
+                            )
+
+                            yield (event_grid, cur_image)
 
                     try:
                         cur_image_ts, cur_image = next(images_gen)
