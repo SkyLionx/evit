@@ -520,7 +520,8 @@ def save_events_frames_view(
                 events, gt_img = data
 
             if model is not None:
-                pred = model(events[None, ...].to(model.device)).detach().cpu()
+                events_tensor = torch.from_numpy(events)[None, ...]
+                pred = model(events_tensor.to(model.device)).detach().cpu().numpy()
 
             for bin_ in events:
                 event_frame = np.repeat(bin_.reshape(h, w, 1), 3, axis=2)
