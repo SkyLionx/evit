@@ -269,7 +269,7 @@ class VisionTransformer(pl.LightningModule):
 
         if use_LPIPS:
             vgg_weights = VGG19_Weights.IMAGENET1K_V1
-            vgg = vgg19(weights=vgg_weights)
+            vgg = list(vgg19(weights=vgg_weights).children())[0]
             vgg.eval()
 
             # Freeze layers
