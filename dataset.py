@@ -66,8 +66,8 @@ class CEDDataset(CustomDataset):
         sequences: List[str] = [],
         ignore_input_image: bool = False,
     ):
-        super().__init__(dataset_path, limit, preload_to_RAM, crop_size, sequences)
         self.ignore_input_image = ignore_input_image
+        super().__init__(dataset_path, limit, preload_to_RAM, crop_size, sequences)
 
     def pre_process(self, batch):
         (in_img, events), out_img = batch
