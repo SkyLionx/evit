@@ -388,45 +388,49 @@ class VisionTransformerConv(pl.LightningModule):
         self.save_hyperparameters()
 
         self.input_shape = input_shape
+        self.bins, self.h, self.w = self.input_shape
         self.p_h, self.p_w = patch_size
         self.lr = learning_rate
-
-        self.bins, self.h, self.w = self.input_shape
-        self.n_patch_x = self.w // self.p_w
-        self.n_patch_y = self.h // self.p_h
 
         self.token_dim = self.p_w * self.p_h
 
         self.conv_encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.Conv2d(10, 32, 3, padding="same"),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(10),
-            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 32, 3, padding="same"),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(10),
+            torch.nn.BatchNorm2d(32),
             torch.nn.MaxPool2d(2),
-            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.Conv2d(32, 64, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.Conv2d(64, 64, 3, padding="same"),
             torch.nn.ReLU(),
         )
 
         self.patch_extractor = PatchExtractor(patch_size)
 
-        self.pe = PositionalEncoding(
-            self.token_dim, max_len=self.n_patch_x * self.n_patch_y * self.bins
-        )
+        self.pe = PositionalEncoding(self.token_dim, max_len=2048)
         enc_layer = torch.nn.TransformerEncoderLayer(
-            d_model=self.p_w * self.p_h, nhead=heads, batch_first=True
+            d_model=self.token_dim, nhead=heads, batch_first=True
         )
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
         self.conv_decoder = torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(10, 10, 3, padding=1),
+            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(10),
-            torch.nn.ConvTranspose2d(10, 10, 2, 2, padding=0),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(10),
-            torch.nn.ConvTranspose2d(10, 3, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 3, 3, padding=1),
             torch.nn.Sigmoid(),
         )
 
@@ -434,22 +438,27 @@ class VisionTransformerConv(pl.LightningModule):
         batch, bins, h, w = x.shape
 
         x = self.conv_encoder(x)
-        # x shape = (batch, bins, new_h, new_w)
+        # x shape = (batch, out_filters, new_h, new_w)
+        # print("Encoder output shape:", x.shape)
 
         # Save the output shape for later
-        new_h, new_w = x.shape[-2:]
-        num_patches_y = x.shape[-2] // self.p_h
-        num_patches_x = x.shape[-1] // self.p_w
+        _, out_filters, new_h, new_w = x.shape
+        num_patches_x = new_w // self.p_w
+        num_patches_y = new_h // self.p_h
 
         x = self.patch_extractor(x)
-        # x shape = (batch, bins * n_patches, p_h * p_w)
+        # x shape = (batch, out_filters * n_patches, p_h * p_w)
+        # print("Patch extractor output shape:", x.shape)
 
         x = self.pe(x)
         x = self.enc(x)
+        # print("Encoder output shape:", x.shape)
 
-        x = x.reshape(batch, bins, num_patches_y, num_patches_x, self.p_h, self.p_w)
+        x = x.reshape(
+            batch, out_filters, num_patches_y, num_patches_x, self.p_h, self.p_w
+        )
         x = torch.einsum("btyxhw -> btyhxw", x)
-        x = x.reshape(batch, bins, new_h, new_w)
+        x = x.reshape(batch, out_filters, new_h, new_w)
 
         x = self.conv_decoder(x)
 
