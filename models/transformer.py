@@ -26,7 +26,7 @@ class PositionalEncoding(torch.nn.Module):
         Args:
             x: Tensor, shape [batch_size, seq_len, embedding_dim]
         """
-        x = x + self.pe[: x.size(0)]
+        x = x + self.pe[:, : x.size(1)]
         return self.dropout(x)
 
 
@@ -365,6 +365,121 @@ class VisionTransformer(pl.LightningModule):
             loss = criterion(model_features, y_features)
         else:
             loss = criterion(model_images, y)
+
+        self.log("val_loss", loss)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+
+class VisionTransformerConv(pl.LightningModule):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        heads: int,
+        layers_number: int,
+        learning_rate: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.input_shape = input_shape
+        self.p_h, self.p_w = patch_size
+        self.lr = learning_rate
+
+        self.bins, self.h, self.w = self.input_shape
+        self.n_patch_x = self.w // self.p_w
+        self.n_patch_y = self.h // self.p_h
+
+        self.token_dim = self.p_w * self.p_h
+
+        self.conv_encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(10, 10, 3, padding="same"),
+            torch.nn.ReLU(),
+        )
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        self.pe = PositionalEncoding(
+            self.token_dim, max_len=self.n_patch_x * self.n_patch_y * self.bins
+        )
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            d_model=self.p_w * self.p_h, nhead=heads, batch_first=True
+        )
+        self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
+
+        self.conv_decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(10, 10, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.ConvTranspose2d(10, 10, 2, 2, padding=0),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.ConvTranspose2d(10, 3, 3, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor):
+        batch, bins, h, w = x.shape
+
+        x = self.conv_encoder(x)
+        # x shape = (batch, bins, new_h, new_w)
+
+        # Save the output shape for later
+        new_h, new_w = x.shape[-2:]
+        num_patches_y = x.shape[-2] // self.p_h
+        num_patches_x = x.shape[-1] // self.p_w
+
+        x = self.patch_extractor(x)
+        # x shape = (batch, bins * n_patches, p_h * p_w)
+
+        x = self.pe(x)
+        x = self.enc(x)
+
+        x = x.reshape(batch, bins, num_patches_y, num_patches_x, self.p_h, self.p_w)
+        x = torch.einsum("btyxhw -> btyhxw", x)
+        x = x.reshape(batch, bins, new_h, new_w)
+
+        x = self.conv_decoder(x)
+
+        return x
+
+    def training_step(self, train_batch, batch_idx):
+        X, y = train_batch
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("train_loss", loss)
+
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        X, y = val_batch
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
 
         self.log("val_loss", loss)
 
