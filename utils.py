@@ -54,6 +54,9 @@ class LogImagesCallback(pl.Callback):
 
         train_out = pl_module(train_X[: self.n].to(device=pl_module.device))
         valid_out = pl_module(valid_X[: self.n].to(device=pl_module.device))
+        if type(train_out) is tuple:
+            train_out = train_out[0]
+            valid_out = valid_out[0]
 
         train_figs = [
             self._create_plot(train_out[i], train_y[i]) for i in range(self.n)

@@ -438,6 +438,7 @@ class VisionTransformerConv(pl.LightningModule):
         batch, bins, h, w = x.shape
 
         x = self.conv_encoder(x)
+        x_features_pre = x
         # x shape = (batch, out_filters, new_h, new_w)
         # print("Encoder output shape:", x.shape)
 
@@ -460,21 +461,28 @@ class VisionTransformerConv(pl.LightningModule):
         x = torch.einsum("btyxhw -> btyhxw", x)
         x = x.reshape(batch, out_filters, new_h, new_w)
 
+        x_features_post = x
+
         x = self.conv_decoder(x)
 
-        return x
+        return x, x_features_pre, x_features_post
 
     def training_step(self, train_batch, batch_idx):
         X, y = train_batch
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
-        model_images = self(X)
+        model_images, pre, post = self(X)
 
         criterion = torch.nn.MSELoss()
 
-        loss = criterion(model_images, y)
+        image_loss = criterion(model_images, y)
+        features_loss = criterion(pre, post)
 
+        loss = image_loss + features_loss
+
+        self.log("train_image_loss", image_loss)
+        self.log("train_features_loss", features_loss)
         self.log("train_loss", loss)
 
         return loss
@@ -484,12 +492,17 @@ class VisionTransformerConv(pl.LightningModule):
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
-        model_images = self(X)
+        model_images, pre, post = self(X)
 
         criterion = torch.nn.MSELoss()
 
-        loss = criterion(model_images, y)
+        image_loss = criterion(model_images, y)
+        features_loss = criterion(pre, post)
 
+        loss = image_loss + features_loss
+
+        self.log("val_image_loss", image_loss)
+        self.log("val_features_loss", features_loss)
         self.log("val_loss", loss)
 
         return loss
