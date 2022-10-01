@@ -395,17 +395,17 @@ class VisionTransformerConv(pl.LightningModule):
         self.token_dim = self.p_w * self.p_h
 
         self.conv_encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(10, 32, 3, padding="same"),
+            torch.nn.Conv2d(10, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.Conv2d(16, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(16, 32, 3, padding="same"),
             torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
             torch.nn.Conv2d(32, 32, 3, padding="same"),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.MaxPool2d(2),
-            torch.nn.Conv2d(32, 64, 3, padding="same"),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.Conv2d(64, 64, 3, padding="same"),
             torch.nn.ReLU(),
         )
 
@@ -418,19 +418,19 @@ class VisionTransformerConv(pl.LightningModule):
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
         self.conv_decoder = torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
             torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
             torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 3, 3, padding=1),
+            torch.nn.ConvTranspose2d(32, 16, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.ConvTranspose2d(16, 16, 2, 2, padding=0),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.ConvTranspose2d(16, 16, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.Conv2d(16, 3, 3, padding=1),
             torch.nn.Sigmoid(),
         )
 
@@ -479,7 +479,7 @@ class VisionTransformerConv(pl.LightningModule):
         image_loss = criterion(model_images, y)
         features_loss = criterion(pre, post)
 
-        loss = image_loss + features_loss
+        loss = image_loss + 1e-2 * features_loss
 
         self.log("train_image_loss", image_loss)
         self.log("train_features_loss", features_loss)
