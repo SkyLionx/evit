@@ -435,9 +435,11 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.Sigmoid(),
         )
 
-        self.lpips_fn = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
             weights=VGG16_Weights.DEFAULT
-        ).to(self.device)
+        )
+        self.ssim = torchmetrics.functional.structural_similarity_index_measure
+        self.mse = torchmetrics.functional.mean_squared_error
 
     def forward(self, x: torch.Tensor):
         batch, bins, h, w = x.shape
@@ -491,14 +493,12 @@ class VisionTransformerConv(pl.LightningModule):
         self.log("train_loss", loss)
 
         # Compute metrics
-        mse = torch.nn.functional.mse_loss(model_images, y)
-        ssim_fn = torchmetrics.StructuralSimilarityIndexMeasure(data_range=1)
-        ssim = ssim_fn(model_images, y)
-        lpip_module = torchmetrics.image.lpip
-        lpips = self.lpips_fn(model_images, y)
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.lpips(model_images, y)
         self.log("train_MSE", mse)
         self.log("train_SSIM", ssim)
-        self.log("train_LPIPS", lpips)
+        self.log("train_LPIPS", self.lpips)
 
         return loss
 
@@ -521,13 +521,12 @@ class VisionTransformerConv(pl.LightningModule):
         self.log("val_loss", loss)
 
         # Compute metrics
-        mse = torch.nn.functional.mse_loss(model_images, y)
-        ssim_fn = torchmetrics.StructuralSimilarityIndexMeasure(data_range=1)
-        ssim = ssim_fn(model_images, y)
-        lpips = self.lpips_fn(model_images, y)
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.lpips(model_images, y)
         self.log("val_MSE", mse)
         self.log("val_SSIM", ssim)
-        self.log("val_LPIPS", lpips)
+        self.log("val_LPIPS", self.lpips)
 
         return loss
 
