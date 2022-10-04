@@ -1,9 +1,10 @@
 import math
 from typing import Tuple
 import torch
+import torchmetrics
 import pytorch_lightning as pl
 import cv2
-from torchvision.models import vgg19, VGG19_Weights
+from torchvision.models import vgg19, VGG19_Weights, VGG16_Weights
 from torchvision.models.feature_extraction import create_feature_extractor
 
 
@@ -434,6 +435,10 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.Sigmoid(),
         )
 
+        self.lpips_fn = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+            weights=VGG16_Weights.DEFAULT
+        ).to(self.device)
+
     def forward(self, x: torch.Tensor):
         batch, bins, h, w = x.shape
 
@@ -485,6 +490,16 @@ class VisionTransformerConv(pl.LightningModule):
         self.log("train_features_loss", features_loss)
         self.log("train_loss", loss)
 
+        # Compute metrics
+        mse = torch.nn.functional.mse_loss(model_images, y)
+        ssim_fn = torchmetrics.StructuralSimilarityIndexMeasure(data_range=1)
+        ssim = ssim_fn(model_images, y)
+        lpip_module = torchmetrics.image.lpip
+        lpips = self.lpips_fn(model_images, y)
+        self.log("train_MSE", mse)
+        self.log("train_SSIM", ssim)
+        self.log("train_LPIPS", lpips)
+
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -504,6 +519,15 @@ class VisionTransformerConv(pl.LightningModule):
         self.log("val_image_loss", image_loss)
         self.log("val_features_loss", features_loss)
         self.log("val_loss", loss)
+
+        # Compute metrics
+        mse = torch.nn.functional.mse_loss(model_images, y)
+        ssim_fn = torchmetrics.StructuralSimilarityIndexMeasure(data_range=1)
+        ssim = ssim_fn(model_images, y)
+        lpips = self.lpips_fn(model_images, y)
+        self.log("val_MSE", mse)
+        self.log("val_SSIM", ssim)
+        self.log("val_LPIPS", lpips)
 
         return loss
 
