@@ -174,13 +174,15 @@ class PatchExtractor(torch.nn.Module):
         x = x.reshape((batch, -1, self.p_h, self.p_w, channels))
         x = torch.einsum("bnhwc -> bcnhw", x)
 
-        # Merge channels and patches
-        x = x.flatten(start_dim=1, end_dim=2)
-        # Flatten patches
-        x = x.flatten(start_dim=2)
-
-        # output shape = (batch, channels * n_patches, h * w)
         return x
+
+        # # Merge channels and patches
+        # x = x.flatten(start_dim=1, end_dim=2)
+        # # Flatten patches
+        # x = x.flatten(start_dim=2)
+
+        # # output shape = (batch, channels * n_patches, h * w)
+        # return x
 
 
 class VisionTransformer(pl.LightningModule):
@@ -395,86 +397,91 @@ class VisionTransformerConv(pl.LightningModule):
         self.lr = learning_rate
         self.feature_loss_weight = feature_loss_weight
 
-        self.token_dim = self.p_w * self.p_h
+        self.token_dim = 256
 
-        # self.conv_encoder = torch.nn.Sequential(
-        #     torch.nn.Conv2d(10, 16, 3, padding="same"),
-        #     torch.nn.ReLU(),
-        #     torch.nn.BatchNorm2d(16),
-        #     torch.nn.Conv2d(16, 16, 3, padding="same"),
-        #     torch.nn.ReLU(),
-        #     torch.nn.BatchNorm2d(16),
-        #     torch.nn.MaxPool2d(2),
-        #     torch.nn.Conv2d(16, 32, 3, padding="same"),
-        #     torch.nn.ReLU(),
-        #     torch.nn.BatchNorm2d(32),
-        #     torch.nn.Conv2d(32, 32, 3, padding="same"),
-        #     torch.nn.ReLU(),
-        # )
+        self.conv_encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(1, 8, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(8),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(8, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(16, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.MaxPool2d(2),
+        )
 
         self.patch_extractor = PatchExtractor(patch_size)
 
-        self.pe = PositionalEncoding(self.token_dim, max_len=2048)
+        self.pe = PositionalEncoding(self.token_dim, max_len=2560)
         enc_layer = torch.nn.TransformerEncoderLayer(
             d_model=self.token_dim, nhead=heads, batch_first=True
         )
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
         self.conv_decoder = torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(10, 32, 3, padding=1),
+            torch.nn.ConvTranspose3d(16, 16, (1, 3, 3), padding=(0, 1, 1)),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ConvTranspose2d(32, 64, 3, padding=1),
+            torch.nn.BatchNorm3d(16),
+            torch.nn.ConvTranspose3d(16, 16, (1, 2, 2), (1, 2, 2), padding=0),
+            torch.nn.ConvTranspose3d(16, 16, (1, 3, 3), padding=(0, 1, 1)),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
+            torch.nn.BatchNorm3d(16),
+            torch.nn.ConvTranspose3d(16, 16, (1, 2, 2), (1, 2, 2), padding=0),
+            torch.nn.ConvTranspose3d(16, 8, (1, 3, 3), padding=(0, 1, 1)),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.Conv2d(64, 3, 3, padding=1),
+            torch.nn.BatchNorm3d(8),
+            torch.nn.ConvTranspose3d(8, 8, (1, 2, 2), (1, 2, 2), padding=0),
+            torch.nn.Conv3d(8, 3, (10, 1, 1), padding=0),
             torch.nn.Sigmoid(),
         )
 
         self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
-            weights=VGG16_Weights.DEFAULT
+            net_type="vgg", weights=VGG16_Weights.DEFAULT
         )
         self.ssim = torchmetrics.functional.structural_similarity_index_measure
         self.mse = torchmetrics.functional.mean_squared_error
 
     def forward(self, x: torch.Tensor):
+        # print("Input shape", x.shape)
         batch, bins, h, w = x.shape
-
-        # x = self.conv_encoder(x)
-        # x_features_pre = x
-        # x shape = (batch, out_filters, new_h, new_w)
-        # print("Encoder output shape:", x.shape)
-
-        # Save the output shape for later
-        _, out_filters, new_h, new_w = x.shape
-        num_patches_x = new_w // self.p_w
-        num_patches_y = new_h // self.p_h
+        num_y_patches = h // self.p_h
+        num_x_patches = w // self.p_w
 
         x = self.patch_extractor(x)
-        # x shape = (batch, out_filters * n_patches, p_h * p_w)
-        # print("Patch extractor output shape:", x.shape)
+        bins, num_patches, patch_h, patch_w = x.shape[1:]
 
+        x = x.reshape(-1, 1, patch_h, patch_w)
+
+        # print("Shape after patches, before encoder", x.shape)
+        x = self.conv_encoder(x)
+        filters, new_patch_h, new_patch_w = x.shape[1:]
+        x = x.reshape(batch, bins * num_patches, filters * new_patch_h * new_patch_w)
+
+        # print("Shape after conv encoder, before pe and enc", x.shape)
         x = self.pe(x)
         x = self.enc(x)
-        # print("Encoder output shape:", x.shape)
 
         x = x.reshape(
-            batch, out_filters, num_patches_y, num_patches_x, self.p_h, self.p_w
+            batch, bins, num_y_patches, num_x_patches, filters, new_patch_h, new_patch_w
         )
-        x = torch.einsum("btyxhw -> btyhxw", x)
-        x = x.reshape(batch, out_filters, new_h, new_w)
+        x = torch.einsum("btyxfhw -> bftyhxw", x)
+        x = x.reshape(
+            batch,
+            filters,
+            bins,
+            num_y_patches * new_patch_h,
+            num_x_patches * new_patch_w,
+        )
 
-        # x_features_post = x
-
+        # print("Shape after encoder, before conv decoder", x.shape)
         x = self.conv_decoder(x)
 
-        return x  # , x_features_pre, x_features_post
+        # print("Output shape:", x.shape)
+        return x.squeeze()
 
     def training_step(self, train_batch, batch_idx):
         X, y = train_batch
