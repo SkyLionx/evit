@@ -405,11 +405,25 @@ class VisionTransformerConv(pl.LightningModule):
         )
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
-        self.conv = torch.nn.Conv2d(10, 1, 3, padding="same")
+        self.conv = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.Conv2d(16, 32, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.Conv2d(16, 1, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(1),
+        )
 
         self.color = torch.nn.Sequential(
             torch.nn.Conv2d(1, 16, 3, padding="same"),
             torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
             torch.nn.Conv2d(16, 3, 3, padding="same"),
             torch.nn.Sigmoid(),
         )
