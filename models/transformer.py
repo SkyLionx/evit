@@ -424,6 +424,12 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.Conv2d(1, 16, 3, padding="same"),
             torch.nn.ReLU(),
             torch.nn.BatchNorm2d(16),
+            torch.nn.Conv2d(16, 32, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 16, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(16),
             torch.nn.Conv2d(16, 3, 3, padding="same"),
             torch.nn.Sigmoid(),
         )
