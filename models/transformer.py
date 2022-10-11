@@ -395,42 +395,54 @@ class VisionTransformerConv(pl.LightningModule):
         self.lr = learning_rate
         self.feature_loss_weight = feature_loss_weight
 
-        self.token_dim = 1024
+        self.token_dim = self.p_w * self.p_h
+
+        self.conv_encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 32, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.Conv2d(32, 32, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(32, 64, 3, padding="same"),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.Conv2d(64, 64, 3, padding="same"),
+            torch.nn.ReLU(),
+        )
 
         self.patch_extractor = PatchExtractor(patch_size)
 
-        self.pe = PositionalEncoding(self.token_dim, max_len=2560)
+        self.pe = PositionalEncoding(self.token_dim, max_len=2048)
         enc_layer = torch.nn.TransformerEncoderLayer(
             d_model=self.token_dim, nhead=heads, batch_first=True
         )
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
-        self.conv = torch.nn.Sequential(
-            torch.nn.Conv2d(10, 16, 3, padding="same"),
+        self.conv_decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.Conv2d(16, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
             torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 16, 3, padding="same"),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.Conv2d(16, 1, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ConvTranspose2d(32, 10, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(1),
+            torch.nn.BatchNorm2d(10),
         )
 
-        self.color = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 16, 3, padding="same"),
+        self.post_conv = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 10, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.Conv2d(16, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.Conv2d(10, 10, 3, padding=1),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.Conv2d(32, 16, 3, padding="same"),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.Conv2d(16, 3, 3, padding="same"),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.Conv2d(10, 3, 3, padding=1),
             torch.nn.Sigmoid(),
         )
 
@@ -441,45 +453,56 @@ class VisionTransformerConv(pl.LightningModule):
         self.mse = torchmetrics.functional.mean_squared_error
 
     def forward(self, x: torch.Tensor):
-        # print("Input shape", x.shape)
         batch, bins, h, w = x.shape
-        n_y_patches = h // self.p_h
-        n_x_patches = w // self.p_w
+
+        x = self.conv_encoder(x)
+        x_features_pre = x
+        # x shape = (batch, out_filters, new_h, new_w)
+        # print("Encoder output shape:", x.shape)
+
+        # Save the output shape for later
+        _, out_filters, new_h, new_w = x.shape
+        num_patches_x = new_w // self.p_w
+        num_patches_y = new_h // self.p_h
 
         x = self.patch_extractor(x)
-
-        # print("Shape after patches, before encoder", x.shape)
+        # x shape = (batch, out_filters * n_patches, p_h * p_w)
+        # print("Patch extractor output shape:", x.shape)
 
         x = self.pe(x)
         x = self.enc(x)
+        # print("Encoder output shape:", x.shape)
 
-        x = x.reshape(batch, bins, n_y_patches, n_x_patches, self.p_h, self.p_w)
+        x = x.reshape(
+            batch, out_filters, num_patches_y, num_patches_x, self.p_h, self.p_w
+        )
         x = torch.einsum("btyxhw -> btyhxw", x)
-        x = x.reshape(batch, bins, n_y_patches * self.p_h, n_x_patches * self.p_w)
+        x = x.reshape(batch, out_filters, new_h, new_w)
 
-        # print("Shape before last conv", x.shape)
-        x = self.conv(x)
+        x_features_post = x
 
-        # print("Shape after last conv, before color", x.shape)
-        x = self.color(x)
+        x = self.conv_decoder(x)
 
-        # print("Output shape:", x.shape)
-        return x
+        x = self.post_conv(x)
+
+        return x, x_features_pre, x_features_post
 
     def training_step(self, train_batch, batch_idx):
         X, y = train_batch
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
-        model_images = self(X)
+        model_images, pre, post = self(X)
 
         criterion = torch.nn.MSELoss()
 
         image_loss = criterion(model_images, y)
+        features_loss = criterion(pre, post)
 
-        loss = image_loss
+        loss = image_loss + self.feature_loss_weight * features_loss
 
         self.log("train_image_loss", image_loss)
+        self.log("train_features_loss", features_loss)
         self.log("train_loss", loss)
 
         # Compute metrics
@@ -497,15 +520,17 @@ class VisionTransformerConv(pl.LightningModule):
         X = X[:, :, : self.h, : self.w]
         y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
 
-        model_images = self(X)
+        model_images, pre, post = self(X)
 
         criterion = torch.nn.MSELoss()
 
         image_loss = criterion(model_images, y)
+        features_loss = criterion(pre, post)
 
-        loss = image_loss
+        loss = image_loss + self.feature_loss_weight * features_loss
 
         self.log("val_image_loss", image_loss)
+        self.log("val_features_loss", features_loss)
         self.log("val_loss", loss)
 
         # Compute metrics
