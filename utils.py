@@ -1,5 +1,7 @@
 import datetime
 import time
+import os
+from typing import Sequence
 
 from IPython import get_ipython
 import pytorch_lightning as pl
@@ -20,6 +22,63 @@ def format_current_date() -> str:
     """
     today = datetime.datetime.today()
     return today.strftime("%Y-%m-%d %H-%M-%S")
+
+
+class ColabSaveCallback(pl.Callback):
+    """
+    Callback that saves files periodically to avoid loosing progress on Colab.
+    """
+
+    def __init__(
+        self,
+        src_files: str,
+        dst_folder: str,
+        every_seconds: int,
+        pre_commands: Sequence[str] = None,
+    ):
+        """
+        Copy some files to another folder periodically.
+
+        Args:
+            src_files (str): file(s) to be copied.
+            The string can be any format accepted by the Linux cp command.
+            dst_folder (str): destination folder.
+            every_seconds (int): copy the files every these seconds.
+            pre_commands (Sequence[str], optional): Sequence of commands to execute before copying files.
+            They can be any Linux commands. Defaults to None.
+        """
+        super().__init__()
+        self.src_files = src_files
+        self.dst_folder = dst_folder
+        self.every_seconds = every_seconds
+        self.pre_commands = pre_commands
+
+        self.last_time = None
+
+    def on_train_epoch_start(self, trainer, pl_module) -> None:
+        # Initialize first time
+        if self.last_time is None:
+            self.last_time = time.time()
+
+    def on_train_epoch_end(self, trainer, pl_module) -> None:
+        now = time.time()
+        elapsed_seconds = now - self.last_time
+        if elapsed_seconds >= self.every_seconds:
+            self.last_time = now
+
+            if self.pre_commands:
+                for command in self.pre_commands:
+                    exit_code = os.system(command)
+                    if exit_code != 0:
+                        print(
+                            "Warning, there was an error executing the command:",
+                            command,
+                        )
+
+            command = f'cp "{self.src_files}" "{self.dst_folder}"'
+            exit_code = os.system(command)
+            if exit_code != 0:
+                print("Warning, there was an error executing the command:", command)
 
 
 class LogImagesCallback(pl.Callback):
