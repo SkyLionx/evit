@@ -316,7 +316,7 @@ def create_event_grid(
     Returns:
         np.array: event grid with shape (`n_temps_bins`, `h`, `w`).
     """
-    event_grid = np.zeros(shape=(n_temp_bins, h, w))
+    event_grid = np.zeros(shape=(n_temp_bins, h, w), dtype=np.float32)
     smallest_timestamp = events[0].timestamp
     highest_timestamp = events[-1].timestamp
 
@@ -529,12 +529,13 @@ def save_events_frames_view(
 
                 images = [event_frame]
                 if model is not None:
-                    images.append(np.einsum("chw -> hwc", pred[0]))
+                    img = np.einsum("chw -> hwc", pred[0])
+                    if denorm:
+                        img = denorm_img(img)
+                    images.append(img)
                 images.append(gt_img)
 
                 frame = np.hstack(images)
-                if denorm:
-                    frame = denorm_img(frame)
                 frame = rgb_to_bgr(frame).astype(np.uint8)
 
                 out.write(frame)
