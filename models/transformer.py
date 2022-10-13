@@ -452,7 +452,7 @@ class VisionTransformerConv(pl.LightningModule):
         )
 
         self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
-            net_type="vgg", weights=VGG16_Weights.DEFAULT
+            net_type="vgg"
         )
         self.ssim = torchmetrics.functional.structural_similarity_index_measure
         self.mse = torchmetrics.functional.mean_squared_error
