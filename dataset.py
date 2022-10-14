@@ -5,6 +5,10 @@ from typing import Tuple, List
 import abc
 
 
+def rgb2gray(img):
+    return np.dot(img[..., :3], [0.2989, 0.5870, 0.1140])
+
+
 class CustomDataset(abc.ABC, torch.utils.data.Dataset):
     def __init__(
         self,
@@ -13,12 +17,14 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
         preload_to_RAM: bool = False,
         crop_size: Tuple[int, int] = None,
         sequences: List[str] = [],
+        convert_to_bw: bool = False,
     ):
         super().__init__()
         self.dataset_path = dataset_path
         self.limit = limit
         self.preload_to_RAM = preload_to_RAM
         self.crop_size = crop_size
+        self.convert_to_bw = convert_to_bw
         self.files_list = []
         self.data = []
 
@@ -78,6 +84,9 @@ class CEDDataset(CustomDataset):
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
 
+        if self.convert_to_bw:
+            in_img = rgb2gray(in_img)
+            out_img = rgb2gray(out_img)
         in_img = (in_img / 255.0).astype(np.float32)
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
@@ -97,6 +106,8 @@ class DIV2KDataset(CustomDataset):
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
 
+        if self.convert_to_bw:
+            out_img = rgb2gray(out_img)
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
         return events, out_img
