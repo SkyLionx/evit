@@ -532,6 +532,8 @@ def dataset_generator_from_binary(
 
             elif data_type == IMAGE_TYPE:
                 ts, length = struct_read(IMAGE_FORMAT)
+                # Transform timestamp to match bag format
+                ts /= 1e9
                 image_data = struct_read(IMAGE_DATA_FORMAT.format(length))
 
                 if not min_n_events or len(events_batch) >= min_n_events:
@@ -547,10 +549,10 @@ def dataset_generator_from_binary(
                         img = bgr_to_rgb(np.array(image_data).reshape(h, w, 3))
                         yield (event_grid, img)
 
-                        events_batch = [event_obj]
+                        events_batch = []
 
 
-def save_samples_to_disk(dataset: Iterable, dst_folder: str):
+def save_samples_to_disk(dataset: Iterable, dst_folder: str, compress: bool = False):
     """
     Save samples to the disk using the torch framework.
 
@@ -562,7 +564,11 @@ def save_samples_to_disk(dataset: Iterable, dst_folder: str):
         os.mkdir(dst_folder)
 
     for i, batch in enumerate(dataset):
-        torch.save(batch, os.path.join(dst_folder, "batch_{:04}.pt".format(i)))
+        dst_path = os.path.join(dst_folder, "batch_{:04}.pt".format(i))
+        if not compress:
+            torch.save(batch, dst_path)
+        else:
+            np.savez_compressed(dst_path, *batch)
 
 
 def save_events_frames_view(

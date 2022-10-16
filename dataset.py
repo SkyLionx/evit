@@ -38,11 +38,12 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
             for file in os.listdir(seq_path):
                 if limit and len(self.files_list) >= limit:
                     break
-                if file.endswith(".pt"):
+                if file.endswith(".pt") or file.endswith(".npz"):
                     file_path = os.path.join(seq_path, file)
                     self.files_list.append(file_path)
                     if self.preload_to_RAM:
-                        sample = self.pre_process(torch.load(file_path))
+                        batch = self._load_batch(file_path)
+                        sample = self.pre_process(batch)
                         self.data.append(sample)
 
     def __len__(self):
@@ -53,9 +54,22 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
             sample = self.data[idx]
         else:
             file = self.files_list[idx]
-            sample = torch.load(file)
+            sample = self._load_batch(file)
             sample = self.pre_process(sample)
         return sample
+
+    def _load_batch(self, file_path):
+        if file_path.endswith(".pt"):
+            return torch.load(file_path)
+        elif file_path.endswith(".npz"):
+            data = np.load(file_path)
+            return [data["arr_" + str(i)] for i in range(len(data))]
+        else:
+            raise Exception(
+                "File {} not supported. Only .pt and .npz files are supported.".format(
+                    file_path
+                )
+            )
 
     @abc.abstractmethod
     def pre_process(self, batch):
