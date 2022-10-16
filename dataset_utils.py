@@ -1,4 +1,5 @@
 import os
+import struct
 from ast import literal_eval
 from typing import Generator, Iterable, List, Tuple
 
@@ -464,6 +465,89 @@ def dataset_generator_from_batches(path: str) -> Generator[DatasetBatch, None, N
     for batch_file in os.listdir(path):
         if batch_file.endswith(".pt"):
             yield torch.load(os.path.join(path, batch_file))
+
+
+def dataset_generator_from_binary(
+    bin_path: str,
+    n_temp_bins: int = 10,
+    crop_size: Tuple[int, int] = None,
+    min_n_events: int = None,
+) -> Generator[DatasetBatch, None, None]:
+    """
+    Yield training pairs formed by an event grid and the resulting output image reading them from a binary file.
+
+    Args:
+        path (str): path of the binary file to read.
+        n_temp_bins (int, optional): number of themporal bins. Defaults to 10.
+        crop_size(Tuple[int, int], optional): accept events only in the top-left sector defined
+        by this coordinates assuming origin at (0, 0). Defaults to None.
+        min_n_events: batch at least this number of events before
+        yielding the next event grid. Defaults to None.
+
+    Yields:
+        Generator[DatasetBatch, None, None]: training pair (event grid, output image).
+    """
+
+    # Constants relative to the format of the binary file
+    EVENT_TYPE = 0
+    IMAGE_TYPE = 1
+    W_H_FORMAT = "II"
+    EVENT_FORMAT = "IBBB0I"
+    IMAGE_FORMAT = "qI"
+    IMAGE_DATA_FORMAT = "{}B0q"
+
+    with open(bin_path, "rb") as bin_file:
+
+        def struct_read(format_str: str):
+            buffer = bin_file.read(struct.calcsize(format_str))
+            if not buffer:
+                return None
+            return struct.unpack(format_str, buffer)
+
+        if crop_size:
+            w, h = crop_size
+        else:
+            w, h = struct_read(W_H_FORMAT)
+            print(w, h)
+
+        events_batch: List[Event] = []
+
+        while True:
+            data_type = struct_read("B")
+            if not data_type:
+                # Reached EOF
+                break
+            data_type = data_type[0]
+
+            if data_type == EVENT_TYPE:
+                ts, x, y, polarity = struct_read(EVENT_FORMAT)
+                # Transform timestamp to match bag format
+                ts /= 1e9
+
+                if crop_size and (x >= w or y >= h):
+                    continue
+
+                event_obj = Event(x, y, ts, polarity)
+                events_batch.append(event_obj)
+
+            elif data_type == IMAGE_TYPE:
+                ts, length = struct_read(IMAGE_FORMAT)
+                image_data = struct_read(IMAGE_DATA_FORMAT.format(length))
+
+                if not min_n_events or len(events_batch) >= min_n_events:
+                    if len(events_batch) == 0:
+                        print(
+                            "Warning, there are no events between two frames, skipping one."
+                        )
+                    else:
+                        event_grid = create_event_grid(
+                            events_batch, w, h, n_temp_bins=n_temp_bins
+                        )
+
+                        img = bgr_to_rgb(np.array(image_data).reshape(h, w, 3))
+                        yield (event_grid, img)
+
+                        events_batch = [event_obj]
 
 
 def save_samples_to_disk(dataset: Iterable, dst_folder: str):
