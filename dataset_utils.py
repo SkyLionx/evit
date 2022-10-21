@@ -508,7 +508,6 @@ def dataset_generator_from_binary(
             w, h = crop_size
         else:
             w, h = struct_read(W_H_FORMAT)
-            print(w, h)
 
         events_batch: List[Event] = []
 
@@ -564,11 +563,11 @@ def save_samples_to_disk(dataset: Iterable, dst_folder: str, compress: bool = Fa
         os.mkdir(dst_folder)
 
     for i, batch in enumerate(dataset):
-        dst_path = os.path.join(dst_folder, "batch_{:04}.pt".format(i))
+        dst_path = os.path.join(dst_folder, "batch_{:04}".format(i))
         if not compress:
-            torch.save(batch, dst_path)
+            torch.save(batch, dst_path + ".pt")
         else:
-            np.savez_compressed(dst_path, *batch)
+            np.savez_compressed(dst_path + ".npz", *batch)
 
 
 def save_events_frames_view(
@@ -656,25 +655,57 @@ def save_events_frames_view_from_batches(
     save_events_frames_view(video_path, gen, model, fps, denorm=False)
 
 
-if __name__ == "__main__":
-    bags = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
-    failed_bags = []
-    for bag_name in os.listdir(bags):
+def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume):
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
+
+    failed_files = []
+    files_queue = sorted(os.listdir(src_folder))
+
+    if resume:
+        last_processed_folder = sorted(os.listdir(dst_folder))[-1]
+        src_file_names = list(
+            map(lambda file: os.path.splitext(os.path.basename(file))[0], files_queue)
+        )
+        last_index = src_file_names.index(last_processed_folder)
+        # Reprocess the last file since I can't know if it has been finished
+        print("Resuming process from", last_processed_folder)
+        files_queue = files_queue[last_index:]
+
+    for file_name in files_queue:
         try:
-            bag_path = os.path.join(bags, bag_name)
-            ds_gen = dataset_generator_from_bag(
-                bag_path, "/cam0/events", "/cam0/image_raw", n_temp_bins=10
-            )
-            folder_path = os.path.join(
-                r"G:\VM\Shared Folder\preprocess_800_0.5", bag_name.replace(".bag", "")
-            )
+            file_path = os.path.join(src_folder, file_name)
+            file_ext = os.path.splitext(file_path)[-1]
+
+            if file_ext == ".bag":
+                ds_gen = dataset_generator_from_bag(
+                    file_path, "/cam0/events", "/cam0/image_raw", n_temp_bins=10
+                )
+            elif file_ext == ".bin":
+                ds_gen = dataset_generator_from_binary(file_path, n_temp_bins=10)
+
+            folder_path = os.path.join(output_folder, os.path.splitext(file_name)[0])
+
             if not os.path.exists(folder_path):
                 os.mkdir(folder_path)
+
             dst_folder = os.path.join(folder_path, "batches")
+
             print("Saving batches to", dst_folder)
-            save_samples_to_disk(ds_gen, dst_folder)
+            save_samples_to_disk(ds_gen, dst_folder, compress=compress)
         except:
-            failed_bags.append(bag_name)
-    if failed_bags:
+            failed_files.append(file_name)
+
+    if failed_files:
         print("The following bags have failed:")
-        print("\n".join(failed_bags))
+        print("\n".join(failed_files))
+
+
+if __name__ == "__main__":
+    # files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
+    # output_folder = r"G:\VM\Shared Folder\preprocess_800_0.5"
+    files_folder = r"G:\VM\Shared Folder\bags\COCO"
+    output_folder = r"C:\datasets\preprocess_COCO"
+    generate_batches_from_dataset_files(
+        files_folder, output_folder, compress=True, resume=True
+    )
