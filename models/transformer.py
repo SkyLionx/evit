@@ -384,6 +384,7 @@ class VisionTransformerConv(pl.LightningModule):
         heads: int,
         layers_number: int,
         learning_rate: float,
+        image_loss_weight: int,
         feature_loss_weight: int,
     ):
         super().__init__()
@@ -393,6 +394,7 @@ class VisionTransformerConv(pl.LightningModule):
         self.bins, self.h, self.w = self.input_shape
         self.p_h, self.p_w = patch_size
         self.lr = learning_rate
+        self.image_loss_weight = image_loss_weight
         self.feature_loss_weight = feature_loss_weight
 
         self.token_dim = self.p_w * self.p_h
@@ -437,8 +439,9 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.Sigmoid(),
         )
 
+        # Normalize should be True if images are in [0, 1] (False -> [-1, +1])
         self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
-            net_type="vgg"
+            net_type="vgg", normalize=True
         )
         self.ssim = torchmetrics.functional.structural_similarity_index_measure
         self.mse = torchmetrics.functional.mean_squared_error
@@ -514,7 +517,10 @@ class VisionTransformerConv(pl.LightningModule):
         image_loss = criterion(model_images, y)
         features_loss = criterion(pre, post)
 
-        loss = image_loss + self.feature_loss_weight * features_loss
+        loss = (
+            self.image_loss_weight * image_loss
+            + self.feature_loss_weight * features_loss
+        )
 
         self.log("val_image_loss", image_loss)
         self.log("val_features_loss", features_loss)
