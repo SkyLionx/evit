@@ -2,6 +2,8 @@ import os
 import numpy as np
 import cv2
 from tensorboard.backend.event_processing import event_accumulator
+import matplotlib.pyplot as plt
+from media_utils import bgr_to_rgb
 
 
 def tb_decode_image_from_event(event):
@@ -43,6 +45,72 @@ def tb_images_to_videos(experiment_path, out_path, fps=15):
         tb_images_to_video(event_acc, tag, path, fps=fps)
 
 
+class TB_Report:
+    def __init__(self, runs_paths, tags_to_show) -> None:
+        self.runs_paths = runs_paths
+        self.tags_to_show = tags_to_show
+
+    def _compute_rows(self):
+        scalars = 0
+        images = 0
+        for category, tags in self.tags_to_show.items():
+            if category == "scalars":
+                scalars += len(tags)
+            elif category == "images":
+                images += len(self.runs_paths)
+            else:
+                raise Exception("Category {} is not supported.".format(category))
+        return scalars, images
+
+    def generate(self, width=20, scalars_height=2, images_height=6):
+        scalars, images = self._compute_rows()
+        rows = scalars + images
+        height = scalars * scalars_height + images * images_height
+
+        fig, axs = plt.subplots(rows, 1, figsize=(width, height))
+        for run_idx, run_path in enumerate(self.runs_paths):
+            run_name = os.path.basename(run_path)
+            event_acc = event_accumulator.EventAccumulator(run_path)
+            event_acc.Reload()
+
+            ax_idx = 0
+            for category, tags in self.tags_to_show.items():
+                for tag in tags:
+                    if category == "scalars":
+                        events = event_acc.Scalars(tag)
+                        steps = [event.step for event in events]
+                        values = [event.value for event in events]
+                        axs[ax_idx].plot(steps, values, label=run_name)
+                        axs[ax_idx].set_title(tag)
+                        axs[ax_idx].legend()
+                        ax_idx += 1
+                    elif category == "images":
+                        ax_idx += run_idx
+                        image_event = list(event_acc.Images(tag))[-1]
+                        img = bgr_to_rgb(tb_decode_image_from_event(image_event))
+                        axs[ax_idx].imshow(img)
+                        axs[ax_idx].set_title(tag + " | " + run_name)
+                        ax_idx += len(self.runs_paths) - ax_idx
+        plt.savefig("Report.pdf")
+
+    # for tag in ["images"]:
+    #     path = os.path.join(out_path, tag + ".mp4")
+    #     tb_images_to_video(event_acc, tag, path, fps=fps)
+
+
 if __name__ == "__main__":
-    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\Large - 1e-4 lr, 1e-2 fl, fixed + more conv"
-    tb_images_to_videos(experiment_path, "Large - 1e-4 lr, 1e-2 fl, fixed + more conv")
+    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\Large - 1e-4 lr, 1e-2 fl, fixed + more conv"
+    # tb_images_to_videos(experiment_path, "Large - 1e-4 lr, 1e-2 fl, fixed + more conv")
+
+    base_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
+    paths = [
+        os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-2 fl"),
+        os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-1 fl"),
+        os.path.join(base_path, "Large - 32-64 conv, 1 il, 0.5 fl"),
+        os.path.join(base_path, "Large - 32-64 conv, 0.8 il, 0.2 fl"),
+    ]
+    tags_to_show = {
+        "scalars": ["train_loss", "val_MSE", "val_SSIM", "val_LPIPS"],
+        "images": ["valid"],
+    }
+    TB_Report(paths, tags_to_show).generate()
