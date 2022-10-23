@@ -401,16 +401,17 @@ class VisionTransformerConv(pl.LightningModule):
 
         self.conv_encoder = torch.nn.Sequential(
             torch.nn.Conv2d(10, 32, 3, padding="same"),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
             torch.nn.Conv2d(32, 32, 3, padding="same"),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
             torch.nn.MaxPool2d(2),
             torch.nn.Conv2d(32, 64, 3, padding="same"),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
             torch.nn.Conv2d(64, 64, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
             torch.nn.ReLU(),
         )
 
@@ -424,17 +425,17 @@ class VisionTransformerConv(pl.LightningModule):
 
         self.conv_decoder = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
-            torch.nn.ReLU(),
             torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
             torch.nn.Conv2d(32, 3, 3, padding=1),
             torch.nn.Sigmoid(),
         )
