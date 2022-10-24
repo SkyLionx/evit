@@ -406,7 +406,7 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.Conv2d(32, 32, 3, padding="same"),
             torch.nn.BatchNorm2d(32),
             torch.nn.ReLU(),
-            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(32, 32, 2, stride=2, padding="same"),
             torch.nn.Conv2d(32, 64, 3, padding="same"),
             torch.nn.BatchNorm2d(64),
             torch.nn.ReLU(),
