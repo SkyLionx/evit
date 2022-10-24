@@ -60,25 +60,30 @@ class ColabSaveCallback(pl.Callback):
         if self.last_time is None:
             self.last_time = time.time()
 
+    def _execute_commands(self):
+        if self.pre_commands:
+            for command in self.pre_commands:
+                exit_code = os.system(command)
+                if exit_code != 0:
+                    print(
+                        "Warning, there was an error executing the command:",
+                        command,
+                    )
+
+        command = f'cp "{self.src_files}" "{self.dst_folder}"'
+        exit_code = os.system(command)
+        if exit_code != 0:
+            print("Warning, there was an error executing the command:", command)
+
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         now = time.time()
         elapsed_seconds = now - self.last_time
         if elapsed_seconds >= self.every_seconds:
             self.last_time = now
+            self._execute_commands()
 
-            if self.pre_commands:
-                for command in self.pre_commands:
-                    exit_code = os.system(command)
-                    if exit_code != 0:
-                        print(
-                            "Warning, there was an error executing the command:",
-                            command,
-                        )
-
-            command = f'cp "{self.src_files}" "{self.dst_folder}"'
-            exit_code = os.system(command)
-            if exit_code != 0:
-                print("Warning, there was an error executing the command:", command)
+    def on_train_end(self, trainer, pl_module) -> None:
+        self._execute_commands()
 
 
 class LogImagesCallback(pl.Callback):
