@@ -60,7 +60,7 @@ class TB_Report:
             if category == "scalars":
                 scalars += len(tags)
             elif category == "images":
-                images += len(self.runs_paths)
+                images += len(self.runs_paths) * len(tags)
             else:
                 raise Exception("Category {} is not supported.".format(category))
         return scalars, images
@@ -93,7 +93,7 @@ class TB_Report:
                         img = bgr_to_rgb(tb_decode_image_from_event(image_event))
                         axs[ax_idx].imshow(img)
                         axs[ax_idx].set_title(tag + " | " + run_name)
-                        ax_idx += len(self.runs_paths) - ax_idx
+                        ax_idx += len(self.runs_paths) - run_idx
         plt.savefig("Report.pdf")
 
     # for tag in ["images"]:
@@ -109,12 +109,14 @@ if __name__ == "__main__":
     base_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
     paths = [
         os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-2 fl"),
-        os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-1 fl"),
-        os.path.join(base_path, "Large - 32-64 conv, 1 il, 0.5 fl"),
-        os.path.join(base_path, "Large - 32-64 conv, 0.8 il, 0.2 fl"),
+        os.path.join(base_path, "Large, Long - 1 il, 1e-2 fl, bn relu, maxpool"),
+        # os.path.join(
+        #     base_path, "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu, strided conv"
+        # ),
+        # os.path.join(base_path, "Large - 32-64 conv, 0.8 il, 0.2 fl"),
     ]
     tags_to_show = {
         "scalars": ["train_loss", "val_MSE", "val_SSIM", "val_LPIPS"],
-        "images": ["valid"],
+        "images": ["train", "valid"],
     }
     TB_Report(paths, tags_to_show).generate()
