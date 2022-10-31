@@ -79,7 +79,7 @@ class EventAutoEncoder(pl.LightningModule):
 
     def training_step(self, train_batch: torch.Tensor, batch_idx):
         X, _ = train_batch
-        X = X.flatten(start_dim=0, end_dim=1).unsqueeze(1)
+        X = X[:, 0].unsqueeze(1)
         X_hat = self(X)
 
         criterion = torch.nn.MSELoss()
@@ -90,7 +90,7 @@ class EventAutoEncoder(pl.LightningModule):
 
     def validation_step(self, valid_batch: torch.Tensor, batch_idx):
         X, _ = valid_batch
-        X = X.flatten(start_dim=0, end_dim=1).unsqueeze(1)
+        X = X[:, 0].unsqueeze(1)
         X_hat = self(X)
 
         criterion = torch.nn.MSELoss()
