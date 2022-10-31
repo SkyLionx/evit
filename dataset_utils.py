@@ -322,6 +322,7 @@ def create_event_grid(
     highest_timestamp = events[-1].timestamp
 
     for event in events:
+        polarity = 1 if event.polarity == 1 else -1
         temp_bin = (
             (event.timestamp - smallest_timestamp)
             / (highest_timestamp - smallest_timestamp + 1e-6)
@@ -330,9 +331,9 @@ def create_event_grid(
         int_bin = int(temp_bin)
         decimal_part = temp_bin - int_bin
 
-        event_grid[int_bin, event.y, event.x] += event.polarity * (1 - decimal_part)
+        event_grid[int_bin, event.y, event.x] += polarity * (1 - decimal_part)
         if decimal_part != 0:
-            event_grid[int_bin + 1, event.y, event.x] += event.polarity * decimal_part
+            event_grid[int_bin + 1, event.y, event.x] += polarity * decimal_part
     return event_grid
 
 
@@ -390,6 +391,7 @@ def dataset_generator_from_bag(
     n_temp_bins: int = 10,
     crop_size: Tuple[int, int] = None,
     min_n_events: int = None,
+    enable_progress: bool = False,
 ) -> Generator[DatasetBatch, None, None]:
     """
     Yield training pairs formed by an event grid and the resulting output image.
@@ -401,8 +403,9 @@ def dataset_generator_from_bag(
         n_temp_bins (int, optional): number of themporal bins. Defaults to 10.
         crop_size(Tuple[int, int], optional): accept events only in the top-left sector defined
         by this coordinates assuming origin at (0, 0). Defaults to None.
-        min_n_events: batch at least this number of events before
+        min_n_events (int, optional): batch at least this number of events before
         yielding the next event grid. Defaults to None.
+        enable_progess (bool, optional): enable tqdm to show loading progress.
 
     Yields:
         Generator[DatasetBatch, None, None]: training pair (event grid, output image).
@@ -421,7 +424,11 @@ def dataset_generator_from_bag(
         msg_count = bag.get_message_count(events_topic)
 
         # Group events before image frame
-        for _, msg, _ in tqdm(bag.read_messages(events_topic), total=msg_count):
+        for _, msg, _ in tqdm(
+            bag.read_messages(events_topic),
+            total=msg_count,
+            disable=not enable_progress,
+        ):
             for event in msg.events:
                 if crop_size and (event.x >= w or event.y >= h):
                     continue
@@ -444,12 +451,11 @@ def dataset_generator_from_bag(
 
                             yield (event_grid, cur_image)
 
+                            events_batch = [event_obj]
                     try:
                         cur_image_ts, cur_image = next(images_gen)
                     except StopIteration:
                         return
-
-                    events_batch = [event_obj]
 
 
 def dataset_generator_from_batches(path: str) -> Generator[DatasetBatch, None, None]:
