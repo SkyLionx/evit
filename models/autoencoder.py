@@ -19,6 +19,9 @@ class EventEncoder(torch.nn.Module):
                 torch.nn.Conv2d(out_features, out_features, (3, 3), padding="same"),
                 torch.nn.BatchNorm2d(out_features),
                 torch.nn.ReLU(),
+                torch.nn.Conv2d(out_features, out_features, (3, 3), padding="same"),
+                torch.nn.BatchNorm2d(out_features),
+                torch.nn.ReLU(),
                 torch.nn.MaxPool2d(2),
             )
             self.enc_blocks.append(block)
@@ -43,6 +46,9 @@ class EventDecoder(torch.nn.Module):
 
             block = torch.nn.Sequential(
                 torch.nn.ConvTranspose2d(in_features, out_features, (2, 2), stride=2),
+                torch.nn.BatchNorm2d(out_features),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(out_features, out_features, (3, 3), padding="same"),
                 torch.nn.BatchNorm2d(out_features),
                 torch.nn.ReLU(),
                 torch.nn.Conv2d(out_features, out_features, (3, 3), padding="same"),
