@@ -63,7 +63,7 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
             return torch.load(file_path)
         elif file_path.endswith(".npz"):
             data = np.load(file_path)
-            return [data["arr_" + str(i)] for i in range(len(data))]
+            return [torch.from_numpy(data["arr_" + str(i)]) for i in range(len(data))]
         else:
             raise Exception(
                 "File {} not supported. Only .pt and .npz files are supported.".format(

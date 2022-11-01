@@ -10,11 +10,6 @@ import matplotlib.pyplot as plt
 from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
 
-def is_using_colab() -> bool:
-    """Return if running on the Colab platform."""
-    return "google.colab" in str(get_ipython())
-
-
 def format_current_date() -> str:
     """
     Return the current date using the format YY-MM-DD hh-mm-ss
