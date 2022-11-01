@@ -471,6 +471,9 @@ def dataset_generator_from_batches(path: str) -> Generator[DatasetBatch, None, N
     for batch_file in os.listdir(path):
         if batch_file.endswith(".pt"):
             yield torch.load(os.path.join(path, batch_file))
+        elif batch_file.endswith(".npz"):
+            data = np.load(os.path.join(path, batch_file))
+            yield [data["arr_" + str(i)] for i in range(len(data))]
 
 
 def dataset_generator_from_binary(
@@ -668,8 +671,9 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
     failed_files = []
     files_queue = sorted(os.listdir(src_folder))
 
-    if resume:
-        last_processed_folder = sorted(os.listdir(dst_folder))[-1]
+    existing_folders = os.listdir(dst_folder)
+    if resume and existing_folders:
+        last_processed_folder = sorted(existing_folders)[-1]
         src_file_names = list(
             map(lambda file: os.path.splitext(os.path.basename(file))[0], files_queue)
         )
@@ -708,10 +712,10 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
 
 
 if __name__ == "__main__":
-    # files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
-    # output_folder = r"G:\VM\Shared Folder\preprocess_800_0.5"
-    files_folder = r"G:\VM\Shared Folder\bags\COCO"
-    output_folder = r"C:\datasets\preprocess_COCO"
+    files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
+    output_folder = r"G:\VM\Shared Folder\preprocess_DIV2K800_0.5_fix"
+    # files_folder = r"G:\VM\Shared Folder\bags\COCO"
+    # output_folder = r"C:\datasets\preprocess_COCO"
     generate_batches_from_dataset_files(
         files_folder, output_folder, compress=True, resume=True
     )
