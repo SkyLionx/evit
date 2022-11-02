@@ -11,10 +11,6 @@ import torch
 from tqdm import tqdm
 
 from media_utils import bgr_to_rgb, rgb_to_bgr, denorm_img, image_from_buffer, Model
-from utils import is_using_colab
-
-if is_using_colab():
-    os.system("pip install -q bagpy")
 
 import rosbag
 from bagpy import bagreader
