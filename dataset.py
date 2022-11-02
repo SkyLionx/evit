@@ -18,6 +18,7 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
         crop_size: Tuple[int, int] = None,
         sequences: List[str] = [],
         convert_to_bw: bool = False,
+        normalize_events: bool = False,
     ):
         super().__init__()
         self.dataset_path = dataset_path
@@ -25,6 +26,8 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
         self.preload_to_RAM = preload_to_RAM
         self.crop_size = crop_size
         self.convert_to_bw = convert_to_bw
+        self.normalize_events = normalize_events
+
         self.files_list = []
         self.data = []
 
@@ -77,17 +80,9 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
 
 
 class CEDDataset(CustomDataset):
-    def __init__(
-        self,
-        dataset_path: str,
-        limit: int = None,
-        preload_to_RAM: bool = False,
-        crop_size: Tuple[int, int] = None,
-        sequences: List[str] = [],
-        ignore_input_image: bool = False,
-    ):
+    def __init__(self, *args, ignore_input_image: bool = False, **kwargs):
         self.ignore_input_image = ignore_input_image
-        super().__init__(dataset_path, limit, preload_to_RAM, crop_size, sequences)
+        super().__init__(*args, **kwargs)
 
     def pre_process(self, batch):
         (in_img, events), out_img = batch
@@ -97,6 +92,9 @@ class CEDDataset(CustomDataset):
             in_img = in_img[:h, :w, :]
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
+
+        if self.normalize_events:
+            events = 2 * ((events - (-255)) / (255 - -255)) - 1
 
         if self.convert_to_bw:
             in_img = rgb2gray(in_img)
@@ -119,6 +117,9 @@ class DIV2KDataset(CustomDataset):
             w, h = self.crop_size
             out_img = out_img[:h, :w, :]
             events = events[:, :h, :w]
+
+        if self.normalize_events:
+            events = 2 * ((events - (-255)) / (255 - -255)) - 1
 
         if self.convert_to_bw:
             out_img = rgb2gray(out_img)
