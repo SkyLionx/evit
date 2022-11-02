@@ -194,6 +194,8 @@ def save_predicted_video(
     for events, img_out in tqdm(dataloader):
         with torch.no_grad():
             output = model(events.to(model.device))
+            if len(output) > 1:
+                output = output[0]
         image_output = torch.einsum("bchw -> bhwc", output)
         for image in image_output:
             frames.append(image.detach().cpu())
@@ -224,6 +226,8 @@ def predict_n_images(
     model.eval()
     with torch.no_grad():
         results = model(eval_events)
+        if len(results) > 1:
+            results = results[0]
         results = np.einsum("bchw -> bhwc", results.detach().cpu())
     return results
 
@@ -269,7 +273,7 @@ def save_visual_bayer_events(
     """
 
     if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+        os.makedirs(output_dir)
 
     red_img, green1_img, green2_img, blue_img = get_empty_bayer_images(w, h)
 
@@ -315,7 +319,7 @@ def save_visual_accumulated_events(
         pol_factor (int, optional): factor to which each polarity is going to be multiplied by. Defaults to 20.
     """
     if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+        os.makedirs(output_dir)
 
     reconstructed_image = np.zeros(shape=(h, w), dtype=np.uint8)
 

@@ -615,7 +615,10 @@ def save_events_frames_view(
 
             if model is not None:
                 events_tensor = torch.from_numpy(events)[None, ...]
-                pred = model(events_tensor.to(model.device)).detach().cpu().numpy()
+                pred = model(events_tensor.to(model.device))
+                if len(pred) > 1:
+                    pred = pred[0]
+                pred = pred.detach().cpu().numpy()
 
             for bin_ in events:
                 event_frame = np.repeat(bin_.reshape(h, w, 1), 3, axis=2)
@@ -627,7 +630,7 @@ def save_events_frames_view(
                     if denorm:
                         img = denorm_img(img)
                     images.append(img)
-                images.append(gt_img)
+                images.append(denorm_img(gt_img))
 
                 frame = np.hstack(images)
                 frame = rgb_to_bgr(frame).astype(np.uint8)
