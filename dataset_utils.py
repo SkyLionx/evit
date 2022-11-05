@@ -711,8 +711,8 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
 
 
 if __name__ == "__main__":
-    files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5"
-    output_folder = r"G:\VM\Shared Folder\preprocess_DIV2K800_0.5_fix"
+    files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5_bw"
+    output_folder = r"G:\VM\Shared Folder\preprocess_DIV2K_5_bw_fix"
     # files_folder = r"G:\VM\Shared Folder\bags\COCO"
     # output_folder = r"C:\datasets\preprocess_COCO"
     generate_batches_from_dataset_files(

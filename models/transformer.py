@@ -386,6 +386,7 @@ class VisionTransformerConv(pl.LightningModule):
         learning_rate: float,
         image_loss_weight: int,
         feature_loss_weight: int,
+        color_output: bool = True,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -396,6 +397,7 @@ class VisionTransformerConv(pl.LightningModule):
         self.lr = learning_rate
         self.image_loss_weight = image_loss_weight
         self.feature_loss_weight = feature_loss_weight
+        self.color_output = color_output
 
         self.token_dim = self.p_w * self.p_h
 
@@ -423,6 +425,8 @@ class VisionTransformerConv(pl.LightningModule):
         )
         self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
 
+        out_filters = 3 if self.color_output else 1
+
         self.conv_decoder = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
             torch.nn.BatchNorm2d(64),
@@ -436,7 +440,7 @@ class VisionTransformerConv(pl.LightningModule):
             torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
             torch.nn.BatchNorm2d(32),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 3, 3, padding=1),
+            torch.nn.Conv2d(32, out_filters, 3, padding=1),
             torch.nn.Sigmoid(),
         )
 
@@ -530,7 +534,12 @@ class VisionTransformerConv(pl.LightningModule):
         # Compute metrics
         mse = self.mse(model_images, y)
         ssim = self.ssim(model_images, y, data_range=1)
-        self.lpips(model_images, y)
+
+        if not self.color_output:
+            images_rgb = torch.repeat_interleave(model_images, 3, 1)
+            y_rgb = torch.repeat_interleave(y, 3, 1)
+
+        self.lpips(images_rgb, y_rgb)
         self.log("val_MSE", mse)
         self.log("val_SSIM", ssim)
         self.log("val_LPIPS", self.lpips)

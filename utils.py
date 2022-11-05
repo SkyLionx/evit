@@ -138,12 +138,12 @@ class LogImagesCallback(pl.Callback):
         plt.subplot(1, 2, 1)
         plt.title("Model Output")
         plt.axis("off")
-        plt.imshow(out.squeeze())
+        plt.imshow(out.squeeze(), cmap="gray")
         plt.subplot(1, 2, 2)
         plt.title("Ground Truth")
         plt.axis("off")
         plt.tight_layout()
-        plt.imshow(gt.squeeze())
+        plt.imshow(gt.squeeze(), cmap="gray")
 
         return fig
 

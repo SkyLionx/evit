@@ -148,8 +148,9 @@ class CEDDataset(CustomDataset):
             events = self._normalize_events(events, self.events_normalization)
 
         if self.convert_to_bw:
-            in_img = rgb2gray(in_img)
-            out_img = rgb2gray(out_img)
+            in_img = np.expand_dims(rgb2gray(in_img), -1)
+            out_img = np.expand_dims(rgb2gray(out_img), -1)
+
         in_img = (in_img / 255.0).astype(np.float32)
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
@@ -173,7 +174,8 @@ class DIV2KDataset(CustomDataset):
             events = self._normalize_events(events, self.events_normalization)
 
         if self.convert_to_bw:
-            out_img = rgb2gray(out_img)
+            out_img = np.expand_dims(rgb2gray(out_img), -1)
+
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
         return events, out_img
