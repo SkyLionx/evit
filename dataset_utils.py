@@ -702,6 +702,9 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
 
             print("Saving batches to", dst_folder)
             save_samples_to_disk(ds_gen, dst_folder, compress=compress)
+        except KeyboardInterrupt:
+            print("Generation interrupted.")
+            break
         except:
             failed_files.append(file_name)
 
@@ -712,7 +715,7 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
 
 if __name__ == "__main__":
     files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5_bw"
-    output_folder = r"G:\VM\Shared Folder\preprocess_DIV2K_5_bw_fix"
+    output_folder = r"C:\datasets\preprocess_DIV2K_5_bw_fix"
     # files_folder = r"G:\VM\Shared Folder\bags\COCO"
     # output_folder = r"C:\datasets\preprocess_COCO"
     generate_batches_from_dataset_files(
