@@ -402,7 +402,7 @@ class VisionTransformerConv(pl.LightningModule):
         self.token_dim = self.p_w * self.p_h
 
         self.conv_encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(10, 32, 3, padding="same"),
+            torch.nn.Conv2d(10, 32, 2, padding="same"),
             torch.nn.BatchNorm2d(32),
             torch.nn.ReLU(),
             torch.nn.Conv2d(32, 32, 3, padding="same"),
@@ -538,8 +538,9 @@ class VisionTransformerConv(pl.LightningModule):
         if not self.color_output:
             images_rgb = torch.repeat_interleave(model_images, 3, 1)
             y_rgb = torch.repeat_interleave(y, 3, 1)
-
-        self.lpips(images_rgb, y_rgb)
+            self.lpips(images_rgb, y_rgb)
+        else:
+            self.lpips(model_images, y)
         self.log("val_MSE", mse)
         self.log("val_SSIM", ssim)
         self.log("val_LPIPS", self.lpips)
