@@ -1,9 +1,8 @@
 import datetime
 import time
 import os
-from typing import Sequence
+from typing import Sequence, Callable
 
-from IPython import get_ipython
 import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
@@ -93,13 +92,18 @@ class LogImagesCallback(pl.Callback):
         valid_batch: torch.tensor,
         n: int = 5,
         n_epochs: int = 5,
+        images_fn: Callable = None,
     ):
-        """Log `n` images from the `train_batch` and `valid_batch` after every `n_epochs`"""
+        """
+        Log `n` images from the `train_batch` and `valid_batch` after every `n_epochs`.
+        `images_fn` must be a function that takes as input (module, batch) and returns images.
+        """
         super().__init__()
         self.train_batch = train_batch
         self.valid_batch = valid_batch
         self.n = n
         self.n_epochs = n_epochs
+        self.images_fn = images_fn
 
     def on_train_epoch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule
@@ -111,11 +115,17 @@ class LogImagesCallback(pl.Callback):
         train_X, train_y = self.train_batch
         valid_X, valid_y = self.valid_batch
 
-        train_out = pl_module(train_X[: self.n].to(device=pl_module.device))
-        valid_out = pl_module(valid_X[: self.n].to(device=pl_module.device))
-        if type(train_out) is tuple:
-            train_out = train_out[0]
-            valid_out = valid_out[0]
+        train_X = train_X[: self.n].to(device=pl_module.device)
+        train_y = train_y[: self.n].to(device=pl_module.device)
+        valid_X = valid_X[: self.n].to(device=pl_module.device)
+        valid_y = valid_y[: self.n].to(device=pl_module.device)
+
+        if self.images_fn:
+            train_out = self.images_fn(pl_module, (train_X, train_y))
+            valid_out = self.images_fn(pl_module, (valid_X, valid_y))
+        else:
+            train_out = pl_module((train_X, train_y))
+            valid_out = pl_module((valid_X, valid_y))
 
         train_figs = [
             self._create_plot(train_out[i], train_y[i]) for i in range(self.n)
