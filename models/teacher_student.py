@@ -3,6 +3,42 @@ import torch
 from models.transformer import PatchExtractor, PositionalEncoding
 
 
+class ResBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.block = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.LeakyReLU(),
+        )
+
+    def forward(self, x):
+        return x + self.block(x)
+
+
+class ResBlockTranspose(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.block = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(
+                in_channels, out_channels, 3, padding=1, bias=False
+            ),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.LeakyReLU(),
+            torch.nn.ConvTranspose2d(
+                out_channels, out_channels, 3, padding=1, bias=False
+            ),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.LeakyReLU(),
+        )
+
+    def forward(self, x):
+        return x + self.block(x)
+
+
 class Teacher(pl.LightningModule):
     def __init__(self, lr: float):
         super().__init__()
@@ -16,85 +52,28 @@ class Teacher(pl.LightningModule):
             torch.nn.Conv2d(3, 32, 3, padding=1, bias=False),
             torch.nn.BatchNorm2d(32),
             torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(32, 32, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(32, 32, 3, stride=2, padding=1, bias=False),
-            torch.nn.Conv2d(32, 32, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(32, 32, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(32, 32, 3, stride=2, padding=1, bias=False),
-            torch.nn.Conv2d(32, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, stride=2, padding=1, bias=False),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(64, 64, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.LeakyReLU(),
+            ResBlock(32, 32),
+            torch.nn.Conv2d(32, 32, 2, stride=2, padding=0, bias=False),
+            ResBlock(32, 32),
+            torch.nn.Conv2d(32, 64, 2, stride=2, padding=0, bias=False),
+            ResBlock(64, 64),
+            torch.nn.Conv2d(64, 64, 2, stride=2, padding=0, bias=False),
+            ResBlock(64, 64),
+            torch.nn.Conv2d(64, 128, 2, stride=2, padding=0, bias=False),
+            ResBlock(128, 128),
         )
 
     def _build_decoder(self):
         return torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
+            ResBlockTranspose(128, 128),
+            torch.nn.ConvTranspose2d(128, 64, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(64, 64),
             torch.nn.ConvTranspose2d(64, 64, 2, stride=2, padding=0, bias=False),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(64, 64, 2, stride=2, padding=0, bias=False),
-            torch.nn.ConvTranspose2d(64, 32, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(32, 32, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
+            ResBlockTranspose(64, 64),
+            torch.nn.ConvTranspose2d(64, 32, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(32, 32),
             torch.nn.ConvTranspose2d(32, 32, 2, stride=2, padding=0, bias=False),
-            torch.nn.ConvTranspose2d(32, 32, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(32, 32, 3, bias=False, padding=1),
-            torch.nn.BatchNorm2d(32),
-            torch.nn.ReLU(),
+            ResBlockTranspose(32, 32),
             torch.nn.Conv2d(32, 3, 3, bias=False, padding=1),
             torch.nn.Sigmoid(),
         )
