@@ -107,6 +107,29 @@ class Teacher(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
+class TeacherTanh(Teacher):
+    def _build_encoder(self):
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(3, 32, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.LeakyReLU(),
+            ResBlock(32, 32),
+            torch.nn.Conv2d(32, 32, 2, stride=2, padding=0, bias=False),
+            ResBlock(32, 32),
+            torch.nn.Conv2d(32, 64, 2, stride=2, padding=0, bias=False),
+            ResBlock(64, 64),
+            torch.nn.Conv2d(64, 64, 2, stride=2, padding=0, bias=False),
+            ResBlock(64, 64),
+            torch.nn.Conv2d(64, 128, 2, stride=2, padding=0, bias=False),
+            torch.nn.Conv2d(128, 128, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(128, 128, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.Tanh(),
+        )
+
+
 class StudentA(pl.LightningModule):
     def __init__(
         self,
