@@ -967,6 +967,131 @@ class StudentH(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
+class StudentI(pl.LightningModule):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        patch_size: Tuple[int, int],
+        output_size: Tuple[int, int, int],
+        heads: int,
+        num_layers: int,
+        encoder_dim: int,
+        decoder_dim: int,
+        features_weight: float,
+        images_weight: float,
+        lr: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+        self.teacher = teacher
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+        self.lr = lr
+
+        self.output_size = output_size
+
+        # Freeze teacher parameters
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        p_h, p_w = patch_size
+        fmaps_c, fmaps_h, fmaps_w = output_size
+        self.encoder_proj = torch.nn.Linear(p_h * p_w, encoder_dim)
+
+        self.embeddings = torch.nn.Embedding(fmaps_h * fmaps_w, decoder_dim)
+
+        self.pos_enc = PositionalEncoding(encoder_dim, max_len=3000)
+        transformer_enc_layer = torch.nn.TransformerEncoderLayer(
+            encoder_dim,
+            heads,
+            batch_first=True,
+            activation=torch.nn.functional.leaky_relu,
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            transformer_enc_layer, num_layers
+        )
+
+        self.decoder_proj = torch.nn.Linear(encoder_dim, decoder_dim)
+
+        transformer_dec_layer = torch.nn.TransformerDecoderLayer(
+            decoder_dim,
+            heads,
+            batch_first=True,
+            activation=torch.nn.functional.leaky_relu,
+        )
+        self.transformer_decoder = torch.nn.TransformerDecoder(
+            transformer_dec_layer,
+            num_layers,
+        )
+
+        self.conv_proj = torch.nn.Linear(decoder_dim, fmaps_c)
+
+    def forward(self, x):
+        batch_size, bins, h, w = x.shape
+        x = self.patch_extractor(x)
+        # print("Patch extractor")
+
+        x = self.encoder_proj(x)
+        # print("Linear projection")
+
+        x = self.pos_enc(x)
+        x = self.transformer_encoder(x)
+        # print("Transformer encoder")
+
+        x = self.decoder_proj(x)
+
+        fmaps_c, fmaps_h, fmaps_w = self.output_size
+        emb = self.embeddings(torch.arange(fmaps_h * fmaps_w, device=x.device))
+        emb = emb.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        x = self.transformer_decoder(emb, x)
+        # print("Transformer decoder")
+
+        x = x.reshape(batch_size, fmaps_h, fmaps_w, -1)
+
+        x = self.conv_proj(x).permute(0, 3, 1, 2)
+        features = x
+
+        x = self.teacher.decoder(x)
+
+        return x, features
+
+    def training_step(self, train_batch, train_idx):
+        events, images = train_batch
+        images = torch.einsum("bhwc -> bchw", images)
+
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        mse = torch.nn.functional.mse_loss
+        features_loss = self.features_weight * mse(teach_features, student_features)
+        self.log("train_features_loss", features_loss)
+        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
+        self.log("train_image_loss", image_loss)
+        loss = features_loss + image_loss
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, val_idx):
+        events, images = val_batch
+        images = torch.einsum("bhwc -> bchw", images)
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
+        self.log("val_features_loss", features_loss)
+        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
+        self.log("val_image_loss", image_loss)
+        loss = self.features_weight * features_loss + self.images_weight * image_loss
+        self.log("val_loss", loss, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+
 if __name__ == "__main__":
     from torchinfo import summary
 
