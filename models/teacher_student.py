@@ -739,6 +739,234 @@ class StudentF(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
+class StudentG(pl.LightningModule):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        patch_size: Tuple[int, int],
+        output_size: Tuple[int, int, int],
+        heads: int,
+        num_layers: int,
+        lr: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+        self.teacher = teacher
+        self.lr = lr
+
+        self.output_size = output_size
+
+        self.conv_decoder = torch.nn.Sequential(
+            ResBlockTranspose(128, 128),
+            torch.nn.ConvTranspose2d(128, 64, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(64, 64),
+            torch.nn.ConvTranspose2d(64, 64, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(64, 64),
+            torch.nn.ConvTranspose2d(64, 32, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(32, 32),
+            torch.nn.ConvTranspose2d(32, 32, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(32, 32),
+            torch.nn.Conv2d(32, 3, 3, bias=False, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        p_h, p_w = patch_size
+        fmaps_c, fmaps_h, fmaps_w = output_size
+        self.linear_proj = torch.nn.Linear(p_h * p_w, fmaps_c)
+
+        self.embeddings = torch.nn.Embedding(fmaps_h * fmaps_w, fmaps_c)
+
+        self.pos_enc = PositionalEncoding(fmaps_c, max_len=3000)
+        transformer_enc_layer = torch.nn.TransformerEncoderLayer(
+            fmaps_c, heads, batch_first=True
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            transformer_enc_layer, num_layers
+        )
+
+        transformer_dec_layer = torch.nn.TransformerDecoderLayer(
+            fmaps_c, heads, batch_first=True, activation=torch.nn.functional.leaky_relu
+        )
+        self.transformer_decoder = torch.nn.TransformerDecoder(
+            transformer_dec_layer,
+            num_layers,
+        )
+
+    def forward(self, x):
+        batch_size, bins, h, w = x.shape
+        x = self.patch_extractor(x)
+        # print("Patch extractor")
+
+        x = self.linear_proj(x)
+        # print("Linear projection")
+
+        x = self.pos_enc(x)
+        x = self.transformer_encoder(x)
+        # print("Transformer encoder")
+
+        fmaps_c, fmaps_h, fmaps_w = self.output_size
+        emb = self.embeddings(torch.arange(fmaps_h * fmaps_w, device=x.device))
+        emb = emb.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        x = self.transformer_decoder(emb, x)
+        # print("Transformer decoder")
+
+        x = x.reshape(batch_size, fmaps_h, fmaps_w, fmaps_c).permute(0, 3, 1, 2)
+        x = self.conv_decoder(x)
+
+        return x
+
+    def training_step(self, train_batch, train_idx):
+        events, images = train_batch
+        images = torch.einsum("bhwc -> bchw", images)
+
+        student_rgb = self(events)
+
+        mse = torch.nn.functional.mse_loss
+        loss = mse(student_rgb, images)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, val_idx):
+        events, images = val_batch
+        images = torch.einsum("bhwc -> bchw", images)
+
+        student_rgb = self(events)
+
+        mse = torch.nn.functional.mse_loss
+        loss = mse(student_rgb, images)
+        self.log("val_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+
+class StudentH(pl.LightningModule):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        patch_size: Tuple[int, int],
+        output_size: Tuple[int, int, int],
+        heads: int,
+        num_layers: int,
+        features_weight: float,
+        images_weight: float,
+        lr: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+        self.teacher = teacher
+        self.output_size = output_size
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+        self.lr = lr
+
+        # Freeze teacher parameters
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        self.conv_decoder = torch.nn.Sequential(
+            ResBlockTranspose(128, 128),
+            torch.nn.ConvTranspose2d(128, 64, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(64, 64),
+            torch.nn.ConvTranspose2d(64, 64, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(64, 64),
+            torch.nn.ConvTranspose2d(64, 32, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(32, 32),
+            torch.nn.ConvTranspose2d(32, 32, 2, stride=2, padding=0, bias=False),
+            ResBlockTranspose(32, 32),
+            torch.nn.Conv2d(32, 3, 3, bias=False, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        p_h, p_w = patch_size
+        fmaps_c, fmaps_h, fmaps_w = output_size
+        self.linear_proj = torch.nn.Linear(p_h * p_w, fmaps_c)
+
+        self.embeddings = torch.nn.Embedding(fmaps_h * fmaps_w, fmaps_c)
+
+        self.pos_enc = PositionalEncoding(fmaps_c, max_len=3000)
+        transformer_enc_layer = torch.nn.TransformerEncoderLayer(
+            fmaps_c, heads, batch_first=True
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            transformer_enc_layer, num_layers
+        )
+
+        transformer_dec_layer = torch.nn.TransformerDecoderLayer(
+            fmaps_c, heads, batch_first=True, activation=torch.nn.functional.leaky_relu
+        )
+        self.transformer_decoder = torch.nn.TransformerDecoder(
+            transformer_dec_layer,
+            num_layers,
+        )
+
+    def forward(self, x):
+        batch_size, bins, h, w = x.shape
+        x = self.patch_extractor(x)
+        # print("Patch extractor")
+
+        x = self.linear_proj(x)
+        # print("Linear projection")
+
+        x = self.pos_enc(x)
+        x = self.transformer_encoder(x)
+        # print("Transformer encoder")
+
+        fmaps_c, fmaps_h, fmaps_w = self.output_size
+        emb = self.embeddings(torch.arange(fmaps_h * fmaps_w, device=x.device))
+        emb = emb.unsqueeze(0).repeat(x.shape[0], 1, 1)
+
+        x = self.transformer_decoder(emb, x)
+        # print("Transformer decoder")
+
+        x = x.reshape(batch_size, fmaps_h, fmaps_w, fmaps_c).permute(0, 3, 1, 2)
+        features = x
+        x = self.conv_decoder(x)
+
+        return x, features
+
+    def training_step(self, train_batch, train_idx):
+        events, images = train_batch
+        images = torch.einsum("bhwc -> bchw", images)
+
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        mse = torch.nn.functional.mse_loss
+        features_loss = self.features_weight * mse(teach_features, student_features)
+        self.log("train_features_loss", features_loss)
+        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
+        self.log("train_image_loss", image_loss)
+        loss = features_loss + image_loss
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, val_idx):
+        events, images = val_batch
+        images = torch.einsum("bhwc -> bchw", images)
+
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        mse = torch.nn.functional.mse_loss
+        features_loss = self.features_weight * mse(teach_features, student_features)
+        self.log("val_features_loss", features_loss)
+        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
+        self.log("val_image_loss", image_loss)
+        loss = features_loss + image_loss
+        self.log("val_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+
 if __name__ == "__main__":
     from torchinfo import summary
 
