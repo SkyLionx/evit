@@ -368,7 +368,7 @@ class StudentC(pl.LightningModule):
 
         self.pos_enc = PositionalEncoding(fmaps_c, max_len=3000)
         transformer_enc_layer = torch.nn.TransformerEncoderLayer(
-            fmaps_c, heads, batch_first=True
+            fmaps_c, heads, batch_first=True, activation=torch.nn.functional.leaky_relu
         )
         self.transformer_encoder = torch.nn.TransformerEncoder(
             transformer_enc_layer, num_layers
