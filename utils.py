@@ -1,12 +1,18 @@
 import datetime
 import time
 import os
-from typing import Sequence, Callable
-
+from typing import Sequence
 import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
 from pytorch_lightning.callbacks.progress.base import ProgressBarBase
+
+from IPython import get_ipython
+
+
+def is_using_colab() -> bool:
+    """Returns whether if running on the Colab platform."""
+    return "google.colab" in str(get_ipython())
 
 
 def format_current_date() -> str:
@@ -92,18 +98,15 @@ class LogImagesCallback(pl.Callback):
         valid_batch: torch.tensor,
         n: int = 5,
         n_epochs: int = 5,
-        images_fn: Callable = None,
     ):
         """
         Log `n` images from the `train_batch` and `valid_batch` after every `n_epochs`.
-        `images_fn` must be a function that takes as input (module, batch) and returns images.
         """
         super().__init__()
         self.train_batch = train_batch
         self.valid_batch = valid_batch
         self.n = n
         self.n_epochs = n_epochs
-        self.images_fn = images_fn
 
     def on_train_epoch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule
@@ -120,9 +123,9 @@ class LogImagesCallback(pl.Callback):
         valid_X = valid_X[: self.n].to(device=pl_module.device)
         valid_y = valid_y[: self.n].to(device=pl_module.device)
 
-        if self.images_fn:
-            train_out = self.images_fn(pl_module, (train_X, train_y))
-            valid_out = self.images_fn(pl_module, (valid_X, valid_y))
+        if hasattr(pl_module, "predict_images"):
+            train_out = pl_module.predict_images((train_X, train_y))
+            valid_out = pl_module.predict_images((valid_X, valid_y))
         else:
             train_out = pl_module((train_X, train_y))
             valid_out = pl_module((valid_X, valid_y))

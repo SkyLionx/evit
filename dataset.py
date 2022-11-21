@@ -43,6 +43,7 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
         self.limit = limit
         self.preload_to_RAM = preload_to_RAM
         self.crop_size = crop_size
+        self.sequences = sequences
         self.convert_to_bw = convert_to_bw
         self.events_normalization = events_normalization
 
@@ -129,6 +130,30 @@ class CustomDataset(abc.ABC, torch.utils.data.Dataset):
     def pre_process(self, batch):
         pass
 
+    def generate_batch_from_files(self, paths):
+        X = []
+        y = []
+
+        for path in paths:
+
+            # If the path doesn't exist try to search .pt or .npz files
+            for ext in [".pt", ".npz"]:
+                if os.path.exists(path + ext):
+                    path = path + ext
+                    break
+
+            sample = self.pre_process(self._load_batch(path))
+            X.append(torch.tensor(sample[0], dtype=torch.float32))
+            y.append(torch.tensor(sample[1], dtype=torch.float32))
+        batch = torch.stack(X), torch.stack(y)
+        return batch
+
+    def print_available_sequences(self):
+        available_sequences = os.listdir(self.dataset_path)
+        print("Available sequences:")
+        for i, seq in enumerate(available_sequences):
+            print(f"{i:<5}{seq}")
+
 
 class CEDDataset(CustomDataset):
     def __init__(self, *args, ignore_input_image: bool = False, **kwargs):
@@ -179,6 +204,25 @@ class DIV2KDataset(CustomDataset):
         out_img = (out_img / 255.0).astype(np.float32)
         events = events.astype(np.float32)
         return events, out_img
+
+    def get_image_callback_batches(self):
+        train_batch_paths = [
+            os.path.join(self.dataset_path, "0001", "batch_0000"),
+            os.path.join(self.dataset_path, "0002", "batch_0000"),
+            os.path.join(self.dataset_path, "0003", "batch_0000"),
+            os.path.join(self.dataset_path, "0004", "batch_0000"),
+            os.path.join(self.dataset_path, "0005", "batch_0000"),
+        ]
+        valid_batch_paths = [
+            os.path.join(self.dataset_path, "0801", "batch_0000"),
+            os.path.join(self.dataset_path, "0802", "batch_0000"),
+            os.path.join(self.dataset_path, "0803", "batch_0000"),
+            os.path.join(self.dataset_path, "0804", "batch_0000"),
+            os.path.join(self.dataset_path, "0805", "batch_0000"),
+        ]
+        train_batch = self.generate_batch_from_files(train_batch_paths)
+        valid_batch = self.generate_batch_from_files(valid_batch_paths)
+        return train_batch, valid_batch
 
 
 class ConcatBatchSampler(torch.utils.data.Sampler):

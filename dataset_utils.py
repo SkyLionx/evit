@@ -1,7 +1,7 @@
 import os
 import struct
 from ast import literal_eval
-from typing import Generator, Iterable, List, Tuple
+from typing import Generator, Iterable, List, Tuple, Dict, Any
 
 import cv2
 import matplotlib.pyplot as plt
@@ -10,7 +10,15 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from media_utils import bgr_to_rgb, rgb_to_bgr, denorm_img, image_from_buffer, Model
+from media_utils import (
+    bgr_to_rgb,
+    rgb_to_bgr,
+    denorm_img,
+    image_from_buffer,
+    Model,
+    save_video_tensors,
+)
+from utils import is_using_colab
 
 import rosbag
 from bagpy import bagreader
@@ -663,6 +671,16 @@ def save_events_frames_view_from_batches(
     save_events_frames_view(video_path, gen, model, fps, denorm=False)
 
 
+def save_dataloader_video(dataloader, video_name, fps=5):
+    frames = []
+    # Old dataset format
+    # for (i, e), o in tqdm(train_dataloader):
+    for e, o in tqdm(dataloader):
+        for batch in o:
+            frames.append(batch)
+        save_video_tensors(video_name, frames, fps)
+
+
 def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume):
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
@@ -711,6 +729,116 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
     if failed_files:
         print("The following bags have failed:")
         print("\n".join(failed_files))
+
+
+def get_div2k_dataset(dataset_name, dataset_path, dataset_params):
+    from dataset import DIV2KDataset
+
+    train_datasets_names = ["{:04}".format(i) for i in range(1, 800 + 1)]
+    valid_datasets_names = ["{:04}".format(i) for i in range(801, 900 + 1)]
+
+    if "SMALL" in dataset_name:
+        train_datasets_names = ["{:04}".format(i) for i in range(1, 25 + 1)]
+        valid_datasets_names = ["{:04}".format(i) for i in range(801, 805 + 1)]
+
+    train_dataset = DIV2KDataset(
+        dataset_path, sequences=train_datasets_names, **dataset_params
+    )
+    valid_dataset = DIV2KDataset(
+        dataset_path, sequences=valid_datasets_names, **dataset_params
+    )
+
+    return train_dataset, valid_dataset
+
+
+def get_ced_dataset(dataset_name, dataset_path, dataset_params):
+    from dataset import CEDDataset
+
+    train_datasets_names = ["simple_color_keyboard_1", "simple_fruit"]
+    train_dataset = CEDDataset(
+        dataset_path,
+        sequences=train_datasets_names,
+        ignore_input_image=True,
+        **dataset_params
+    )
+
+    valid_datasets_names = ["simple_rabbits"]
+    valid_dataset = CEDDataset(
+        dataset_path,
+        sequences=valid_datasets_names,
+        ignore_input_image=True,
+        **dataset_params
+    )
+
+    test_datasets_names = [
+        "simple_color_keyboard_2",
+        "simple_jenga_1",
+        "simple_wires_1",
+    ]
+    test_dataset = CEDDataset(
+        dataset_path,
+        sequences=test_datasets_names,
+        ignore_input_image=True,
+        **dataset_params
+    )
+    return train_dataset, valid_dataset, test_dataset
+
+
+def get_dataset(base_path: str, dataset_name: str, dataset_params: Dict[str, Any]):
+    # Map from dataset name to Google Drive ID
+    AVAILABLE_DATASETS = {
+        "DIV2K_5_FIX": "16AQwtfUwolXpyvbZdtl6KaFJadRgDuNi",
+        "DIV2K_5_FIX_SMALL": "1aakiGo_wCjQq3g6N8nl_IBl6a2DvsSCp",
+    }
+
+    dataset_name = dataset_name.upper()
+
+    assert (
+        dataset_name in AVAILABLE_DATASETS
+    ), "Dataset {} not supported. Available datasets: {}".format(
+        dataset_name,
+        AVAILABLE_DATASETS,
+    )
+
+    dataset_path = os.path.join(base_path, dataset_name)
+    if not os.path.exists(dataset_path):
+        if is_using_colab():
+
+            # Download the dataset from Google Drive
+            dataset_drive_id = AVAILABLE_DATASETS[dataset_name]
+            os.system("gdown " + dataset_drive_id + " -O Datasets/")
+
+            import zipfile
+
+            # Extract datasets zips
+            for file_name in os.listdir("Datasets"):
+                if not file_name.endswith("zip"):
+                    continue
+
+                zip_fullpath = os.path.join(base_path, file_name)
+                output_path = os.path.join(base_path, file_name.replace(".zip", ""))
+                with zipfile.ZipFile(zip_fullpath, "r") as zip_ref:
+                    zip_ref.extractall(output_path)
+                    # Delete the original .zip after extraciton
+                    os.remove(zip_fullpath)
+        else:
+            raise Exception("Couldn't find the dataset in " + dataset_path)
+
+    if "DIV2K" in dataset_name:
+        train_dataset, valid_dataset = get_div2k_dataset(
+            dataset_name, dataset_path, dataset_params
+        )
+    elif "CED" in dataset_name:
+        train_dataset, valid_dataset, test_dataset = get_ced_dataset(
+            dataset_name, dataset_path, dataset_params
+        )
+
+    # Check that there is no instersection between train and valid dataset
+    union = set(train_dataset.sequences).union(set(valid_dataset.sequences))
+    sum_of_lengths = len(train_dataset.sequences) + len(valid_dataset.sequences)
+    assert len(union) == sum_of_lengths, "Some datasets are in common"
+
+    return train_dataset, valid_dataset
 
 
 if __name__ == "__main__":

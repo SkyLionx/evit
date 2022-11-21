@@ -106,6 +106,12 @@ class Teacher(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
+    def predict_images(self, batch: torch.Tensor):
+        events, images = batch
+        images = torch.einsum("bhwc -> bchw", images)
+        out_images, codes = self(images)
+        return out_images
+
 
 class TeacherTanh(Teacher):
     def _build_encoder(self):
@@ -130,7 +136,45 @@ class TeacherTanh(Teacher):
         )
 
 
-class StudentA(pl.LightningModule):
+class StudentBase(pl.LightningModule):
+    def training_step(self, train_batch, train_idx):
+        events, images = train_batch
+        images = torch.einsum("bhwc -> bchw", images)
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
+        self.log("train_features_loss", features_loss)
+        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
+        self.log("train_image_loss", image_loss)
+        loss = self.features_weight * features_loss + self.images_weight * image_loss
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, val_idx):
+        events, images = val_batch
+        images = torch.einsum("bhwc -> bchw", images)
+        teach_rgb, teach_features = self.teacher(images)
+        student_rgb, student_features = self(events)
+
+        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
+        self.log("val_features_loss", features_loss)
+        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
+        self.log("val_image_loss", image_loss)
+        loss = self.features_weight * features_loss + self.images_weight * image_loss
+        self.log("val_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+    def predict_images(self, batch: torch.Tensor):
+        events, images = batch
+        rgbs, codes = self(events)
+        return rgbs
+
+
+class StudentA(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -190,39 +234,8 @@ class StudentA(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
 
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentB(pl.LightningModule):
+class StudentB(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -299,40 +312,8 @@ class StudentB(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentC(pl.LightningModule):
+class StudentC(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -407,41 +388,8 @@ class StudentC(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        features_loss = self.features_weight * mse(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = features_loss + image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentD(pl.LightningModule):
+class StudentD(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -484,41 +432,8 @@ class StudentD(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentE(pl.LightningModule):
+class StudentE(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -598,41 +513,8 @@ class StudentE(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentF(pl.LightningModule):
+class StudentF(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -706,40 +588,8 @@ class StudentF(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentG(pl.LightningModule):
+class StudentG(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -817,33 +667,8 @@ class StudentG(pl.LightningModule):
 
         return x
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        student_rgb = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        loss = mse(student_rgb, images)
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-
-        student_rgb = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        loss = mse(student_rgb, images)
-        self.log("val_loss", loss)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentH(pl.LightningModule):
+class StudentH(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -931,43 +756,8 @@ class StudentH(pl.LightningModule):
 
         return x, features
 
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
 
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        features_loss = self.features_weight * mse(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = features_loss + image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        features_loss = self.features_weight * mse(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = features_loss + image_loss
-        self.log("val_loss", loss)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-
-
-class StudentI(pl.LightningModule):
+class StudentI(StudentBase):
     def __init__(
         self,
         teacher: torch.nn.Module,
@@ -1057,39 +847,6 @@ class StudentI(pl.LightningModule):
         x = self.teacher.decoder(x)
 
         return x, features
-
-    def training_step(self, train_batch, train_idx):
-        events, images = train_batch
-        images = torch.einsum("bhwc -> bchw", images)
-
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        mse = torch.nn.functional.mse_loss
-        features_loss = self.features_weight * mse(teach_features, student_features)
-        self.log("train_features_loss", features_loss)
-        image_loss = self.images_weight * mse(teach_rgb, student_rgb)
-        self.log("train_image_loss", image_loss)
-        loss = features_loss + image_loss
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, val_idx):
-        events, images = val_batch
-        images = torch.einsum("bhwc -> bchw", images)
-        teach_rgb, teach_features = self.teacher(images)
-        student_rgb, student_features = self(events)
-
-        features_loss = torch.nn.functional.mse_loss(teach_features, student_features)
-        self.log("val_features_loss", features_loss)
-        image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
-        self.log("val_image_loss", image_loss)
-        loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
 if __name__ == "__main__":
