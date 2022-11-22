@@ -50,4 +50,9 @@ def train_model(
         logger=logger,
         log_every_n_steps=log_every,
     )
-    trainer.fit(model, train_dataloader, valid_dataloader)
+    trainer.fit(
+        model,
+        train_dataloader,
+        valid_dataloader,
+        ckpt_path=PARAMS["TRAINING_PARAMS"].get("ckpt_path", None),
+    )
