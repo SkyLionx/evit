@@ -45,7 +45,7 @@ def train_model(
     trainer = pl.Trainer(
         max_epochs=PARAMS["TRAINING_PARAMS"]["n_epochs"],
         callbacks=callbacks,
-        accelerator="gpu",
+        accelerator=PARAMS["DEVICE"],
         profiler=None,
         logger=logger,
         log_every_n_steps=log_every,
