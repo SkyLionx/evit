@@ -1,10 +1,10 @@
 from typing import Tuple
 
-import pytorch_lightning as pl
 import torch
-from models.transformer import PatchExtractor, PositionalEncoding
+import pytorch_lightning as pl
+import torchmetrics
 
-import matplotlib.pyplot as plt
+from models.transformer import PatchExtractor, PositionalEncoding
 
 
 class ResBlock(torch.nn.Module):
@@ -137,6 +137,15 @@ class TeacherTanh(Teacher):
 
 
 class StudentBase(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        # Define metrics functions
+        self.ssim_fn = torchmetrics.functional.structural_similarity_index_measure
+        self.mse_fn = torchmetrics.functional.mean_squared_error
+        self.lpips_fn = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+            net_type="vgg", normalize=True
+        )
+
     def training_step(self, train_batch, train_idx):
         events, images = train_batch
         images = torch.einsum("bhwc -> bchw", images)
@@ -149,6 +158,13 @@ class StudentBase(pl.LightningModule):
         self.log("train_image_loss", image_loss)
         loss = self.features_weight * features_loss + self.images_weight * image_loss
         self.log("train_loss", loss)
+
+        # Compute metrics
+        ssim = self.ssim_fn(student_rgb, images)
+        self.log("train_SSIM", ssim)
+        mse = self.mse_fn(student_rgb, images)
+        self.log("train_MSE", mse)
+
         return loss
 
     def validation_step(self, val_batch, val_idx):
@@ -162,7 +178,16 @@ class StudentBase(pl.LightningModule):
         image_loss = torch.nn.functional.mse_loss(teach_rgb, student_rgb)
         self.log("val_image_loss", image_loss)
         loss = self.features_weight * features_loss + self.images_weight * image_loss
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, prog_bar=True)
+
+        # Compute metrics
+        ssim = self.ssim_fn(student_rgb, images)
+        self.log("val_SSIM", ssim, prog_bar=True)
+        mse = self.mse_fn(student_rgb, images)
+        self.log("val_MSE", mse)
+        lpips = self.lpips_fn(student_rgb, images)
+        self.log("val_LPIPS", lpips)
+
         return loss
 
     def configure_optimizers(self):
