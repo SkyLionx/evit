@@ -874,6 +874,117 @@ class StudentI(StudentBase):
         return x, features
 
 
+class StudentJ(StudentBase):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        input_size: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        output_size: Tuple[int, int, int],
+        heads: int,
+        num_layers: int,
+        encoder_dim: int,
+        decoder_dim: int,
+        features_weight: float,
+        images_weight: float,
+        lr: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+        self.teacher = teacher
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+        self.lr = lr
+
+        self.output_size = output_size
+
+        # Freeze teacher parameters
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        p_h, p_w = patch_size
+        fmaps_c, fmaps_h, fmaps_w = output_size
+        self.encoder_proj = torch.nn.Linear(p_h * p_w, encoder_dim)
+
+        self.embeddings = torch.nn.Embedding(fmaps_h * fmaps_w, decoder_dim)
+
+        bins, h, w = input_size
+        n_p_y, n_p_x = h // p_h, w // p_w
+        self.learnable_pos_enc = torch.nn.Embedding(bins * n_p_y * n_p_x, encoder_dim)
+
+        transformer_enc_layer = torch.nn.TransformerEncoderLayer(
+            encoder_dim,
+            heads,
+            batch_first=True,
+            activation=torch.nn.functional.leaky_relu,
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            transformer_enc_layer, num_layers
+        )
+
+        self.decoder_proj = torch.nn.Linear(encoder_dim, decoder_dim)
+
+        transformer_dec_layer = torch.nn.TransformerDecoderLayer(
+            decoder_dim,
+            heads,
+            batch_first=True,
+            activation=torch.nn.functional.leaky_relu,
+        )
+        self.transformer_decoder = torch.nn.TransformerDecoder(
+            transformer_dec_layer,
+            num_layers,
+        )
+
+        self.conv_net = torch.nn.Sequential(
+            torch.nn.Conv2d(decoder_dim, fmaps_c // 2, 3, padding="same"),
+            torch.nn.BatchNorm2d(fmaps_c // 2),
+            torch.nn.LeakyReLU(fmaps_c // 2),
+            torch.nn.Conv2d(fmaps_c // 2, fmaps_c, 3, padding="same"),
+            torch.nn.BatchNorm2d(fmaps_c),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(fmaps_c, fmaps_c, 3, padding="same"),
+            torch.nn.BatchNorm2d(fmaps_c),
+            torch.nn.LeakyReLU(),
+        )
+
+        torch.nn.Linear(decoder_dim, fmaps_c)
+
+    def forward(self, x):
+        batch_size, bins, h, w = x.shape
+        x = self.patch_extractor(x)
+        # print("Patch extractor")
+
+        x = self.encoder_proj(x)
+        # print("Linear projection")
+
+        pos_enc = self.learnable_pos_enc(torch.arange(x.shape[-2], device=x.device))
+        pos_enc = pos_enc.unsqueeze(0).repeat(batch_size, 1, 1)
+
+        x = x + pos_enc
+        x = self.transformer_encoder(x)
+        # print("Transformer encoder")
+
+        x = self.decoder_proj(x)
+
+        fmaps_c, fmaps_h, fmaps_w = self.output_size
+        emb = self.embeddings(torch.arange(fmaps_h * fmaps_w, device=x.device))
+        emb = emb.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        x = self.transformer_decoder(emb, x)
+        # print("Transformer decoder")
+
+        x = x.reshape(batch_size, fmaps_h, fmaps_w, -1)
+
+        x = self.conv_net(x.permute(0, 3, 1, 2))
+        features = x
+
+        x = self.teacher.decoder(x)
+
+        return x, features
+
+
 if __name__ == "__main__":
     from torchinfo import summary
 
