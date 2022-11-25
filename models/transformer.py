@@ -550,3 +550,154 @@ class VisionTransformerConv(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
+
+
+class TransformerBase(pl.LightningModule):
+    def __init__(self, lr: float):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.lr = lr
+
+        # Normalize should be True if images are in [0, 1] (False -> [-1, +1])
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+            net_type="vgg", normalize=True
+        )
+        self.ssim = torchmetrics.functional.structural_similarity_index_measure
+        self.mse = torchmetrics.functional.mean_squared_error
+
+    def training_step(self, train_batch, batch_idx):
+        X, y = train_batch
+        y = torch.einsum("bhwc -> bchw", y)
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("train_loss", loss)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.log("train_MSE", mse)
+        self.log("train_SSIM", ssim)
+
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        X, y = val_batch
+        y = torch.einsum("bhwc -> bchw", y)
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("val_loss", loss, prog_bar=True)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.lpips(model_images, y)
+        self.log("val_MSE", mse)
+        self.log("val_SSIM", ssim, prog_bar=True)
+        self.log("val_LPIPS", self.lpips)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def predict_images(self, batch):
+        events, images = batch
+        return self(events)
+
+
+class TransformerA(TransformerBase):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        encoder_dim: int,
+        decoder_dim: int,
+        conv_dim: int,
+        heads: int,
+        layers_number: int,
+        learning_rate: float,
+    ):
+        super().__init__(learning_rate)
+        self.conv_dim = conv_dim
+
+        self.pw, self.ph = patch_size
+        self.bins, self.h, self.w = input_shape
+        self.n_patches_x = self.w // self.pw
+        self.n_patches_y = self.h // self.ph
+        self.n_patches = self.n_patches_x * self.n_patches_y
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        self.encoder_proj = torch.nn.Linear(self.pw * self.ph, encoder_dim)
+
+        self.pos_enc = PositionalEncoding(
+            encoder_dim, max_len=self.bins * self.n_patches
+        )
+
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            encoder_dim, heads, batch_first=True
+        )
+        self.transf_enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
+
+        self.decoder_proj = torch.nn.Linear(encoder_dim, decoder_dim)
+        self.dec_pos_emb = torch.nn.Embedding(8 * 8, decoder_dim)
+        dec_layer = torch.nn.TransformerDecoderLayer(
+            decoder_dim, heads, batch_first=True
+        )
+        self.transf_dec = torch.nn.TransformerDecoder(dec_layer, layers_number)
+
+        self.conv_proj = torch.nn.Linear(decoder_dim, conv_dim)
+
+        self.conv_dec = torch.nn.Sequential(
+            torch.nn.Conv2d(conv_dim, 64, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.Conv2d(64, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.LeakyReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.Conv2d(32, 16, 3, padding="same"),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.LeakyReLU(),
+            torch.nn.ConvTranspose2d(16, 16, 2, 2, padding=0),
+            torch.nn.Conv2d(16, 16, 3, padding="same"),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.LeakyReLU(),
+            torch.nn.ConvTranspose2d(16, 16, 2, 2, padding=0),
+            torch.nn.Conv2d(16, 3, 3, padding="same"),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor):
+        x = self.patch_extractor(x)
+        x = self.encoder_proj(x)
+
+        x = self.pos_enc(x)
+        x = self.transf_enc(x)
+
+        x = self.decoder_proj(x)
+
+        emb = self.dec_pos_emb(torch.arange(8 * 8, device=x.device))
+        batch_size = x.shape[0]
+        emb = emb.unsqueeze(0).repeat(batch_size, 1, 1)
+        x = self.transf_dec(emb, x)
+
+        x = self.conv_proj(x)
+        x = x.reshape(batch_size, 8, 8, self.conv_dim)
+        x = x.permute(0, 3, 1, 2)
+        x = self.conv_dec(x)
+
+        return x

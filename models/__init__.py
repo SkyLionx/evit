@@ -13,8 +13,10 @@ def get_model(model_params: Dict[str, Any]):
 
     if "Teacher" in model_name or "Student" in model_name:
         module_name = "models.teacher_student"
+    elif "Transformer" in model_name:
+        module_name = "models.transformer"
     else:
-        raise "Model " + model_name + " not supported."
+        raise Exception("Model " + model_name + " not supported.")
 
     module = importlib.import_module(module_name)
 
