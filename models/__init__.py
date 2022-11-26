@@ -15,6 +15,8 @@ def get_model(model_params: Dict[str, Any]):
         module_name = "models.teacher_student"
     elif "Transformer" in model_name:
         module_name = "models.transformer"
+    elif "Test" in model_name:
+        module_name = "models.tests"
     else:
         raise Exception("Model " + model_name + " not supported.")
 
