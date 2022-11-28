@@ -551,6 +551,10 @@ class VisionTransformerConv(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
 
+    def predict_images(self, batch):
+        events, images = batch
+        return self(events)[0]
+
 
 class TransformerBase(pl.LightningModule):
     def __init__(self, lr: float):
