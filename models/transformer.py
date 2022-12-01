@@ -6,29 +6,7 @@ import pytorch_lightning as pl
 import cv2
 from torchvision.models import vgg19, VGG19_Weights, VGG16_Weights
 from torchvision.models.feature_extraction import create_feature_extractor
-
-
-class PositionalEncoding(torch.nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
-        super().__init__()
-        self.dropout = torch.nn.Dropout(p=dropout)
-
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
-        )
-        pe = torch.zeros(1, max_len, d_model)
-        pe[0, :, 0::2] = torch.sin(position * div_term)
-        pe[0, :, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: Tensor, shape [batch_size, seq_len, embedding_dim]
-        """
-        x = x + self.pe[:, : x.size(1)]
-        return self.dropout(x)
+from models.modules import PositionalEncoding, PatchExtractor, BayerDecomposer
 
 
 class TransformerModel(torch.nn.Module):
@@ -155,32 +133,6 @@ class EventEncoderTransformer(torch.nn.Module):
 
         y = y.reshape(batches, channels, height, width)
         return y
-
-
-class PatchExtractor(torch.nn.Module):
-    def __init__(self, patch_size: Tuple[int, int]):
-        super().__init__()
-        self.p_w, self.p_h = patch_size
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch, channels, h, w = x.shape
-
-        x = torch.einsum("bchw -> bhwc", x)
-        x = x.reshape(
-            (batch, h // self.p_h, self.p_h, w // self.p_w, self.p_w, channels)
-        )
-
-        x = x.swapaxes(2, 3)
-        x = x.reshape((batch, -1, self.p_h, self.p_w, channels))
-        x = torch.einsum("bnhwc -> bcnhw", x)
-
-        # Merge channels and patches
-        x = x.flatten(start_dim=1, end_dim=2)
-        # Flatten patches
-        x = x.flatten(start_dim=2)
-
-        # output shape = (batch, channels * n_patches, h * w)
-        return x
 
 
 class VisionTransformer(pl.LightningModule):
@@ -703,5 +655,101 @@ class TransformerA(TransformerBase):
         x = x.reshape(batch_size, 8, 8, self.conv_dim)
         x = x.permute(0, 3, 1, 2)
         x = self.conv_dec(x)
+
+        return x
+
+
+class TransformerB(TransformerBase):
+    def __init__(
+        self,
+        num_heads: int,
+        num_layers: int,
+        lr: float,
+    ):
+        super().__init__(lr)
+        self.save_hyperparameters()
+
+        self.bayer_decomposer = BayerDecomposer()
+
+        self.conv_encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(4, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(32, 32, 2, 2, padding=0),
+            torch.nn.Conv2d(32, 64, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(64, 64, 2, 2, padding=0),
+            torch.nn.Conv2d(64, 128, 3, padding="same"),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(128, 128, 2, 2, padding=0),
+            torch.nn.Conv2d(128, 128, 3, padding="same"),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.LeakyReLU(),
+        )
+
+        feature_map_shape = (8, 8)
+        token_dim = 128
+
+        self.pos_enc = PositionalEncoding(token_dim, max_len=2048)
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            d_model=token_dim, nhead=num_heads, batch_first=True
+        )
+        self.transf_enc = torch.nn.TransformerEncoder(enc_layer, num_layers)
+
+        num_tokens = feature_map_shape[0] * feature_map_shape[1]
+        self.dec_embeddings = torch.nn.Embedding(num_tokens, token_dim)
+        dec_layer = torch.nn.TransformerDecoderLayer(
+            d_model=token_dim, nhead=num_heads, batch_first=True
+        )
+        self.transf_dec = torch.nn.TransformerDecoder(dec_layer, num_layers)
+
+        self.conv_decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(128, 128, 3, padding=1),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(128, 128, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(128, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.Conv2d(32, 3, 3, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor):
+        batch, bins, h, w = x.shape
+
+        x = x.reshape(batch * bins, h, w)
+        x = self.bayer_decomposer(x)
+        # x.shape = (batch * bins, 4, h // 2, w // 2)
+
+        x = self.conv_encoder(x)
+        filters, new_h, new_w = x.shape[1:]
+
+        x = x.reshape(batch, bins, filters, new_h, new_w)
+        x = x.permute(0, 1, 3, 4, 2)
+        x = x.reshape(batch, bins * new_h * new_w, filters)
+
+        x = self.pos_enc(x)
+        x = self.transf_enc(x)
+
+        emb_indexes = torch.arange(new_h * new_w, device=x.device)
+        decoder_emb = self.dec_embeddings(emb_indexes).unsqueeze(0).repeat(batch, 1, 1)
+        x = self.transf_dec(decoder_emb, x)
+
+        x = x.reshape(batch, new_h, new_w, filters)
+        x = x.permute(0, 3, 1, 2)
+
+        x = self.conv_decoder(x)
 
         return x

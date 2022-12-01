@@ -4,43 +4,12 @@ import torch
 import pytorch_lightning as pl
 import torchmetrics
 
-from models.transformer import PatchExtractor, PositionalEncoding
-
-
-class ResBlock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.block = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(out_channels),
-            torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
-            torch.nn.BatchNorm2d(out_channels),
-            torch.nn.LeakyReLU(),
-        )
-
-    def forward(self, x):
-        return x + self.block(x)
-
-
-class ResBlockTranspose(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.block = torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(
-                in_channels, out_channels, 3, padding=1, bias=False
-            ),
-            torch.nn.BatchNorm2d(out_channels),
-            torch.nn.LeakyReLU(),
-            torch.nn.ConvTranspose2d(
-                out_channels, out_channels, 3, padding=1, bias=False
-            ),
-            torch.nn.BatchNorm2d(out_channels),
-            torch.nn.LeakyReLU(),
-        )
-
-    def forward(self, x):
-        return x + self.block(x)
+from models.modules import (
+    PatchExtractor,
+    PositionalEncoding,
+    ResBlock,
+    ResBlockTranspose,
+)
 
 
 class Teacher(pl.LightningModule):
