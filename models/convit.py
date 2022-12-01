@@ -957,6 +957,13 @@ class CustomConViTEventsC(pl.LightningModule):
         self.ssim = torchmetrics.functional.structural_similarity_index_measure
         self.mse = torchmetrics.functional.mean_squared_error
 
+        self.patch_embed = PatchEmbed(
+            (h // 2, w // 2),
+            patch_size,
+            bins * 4,
+            embed_dim,
+        )
+
     def forward(self, x: torch.Tensor):
         batch_size, bins, h, w = x.shape
         x = x.reshape(batch_size * bins, h, w)
@@ -964,7 +971,8 @@ class CustomConViTEventsC(pl.LightningModule):
 
         channels, new_h, new_w = x.shape[1:]
         x = x.reshape(batch_size, bins * channels, new_h, new_w)
-        x = self.convvit(x)
+        x = self.patch_embed(x)
+        # x = self.convvit(x)
         # x.shape = (batch_size, num_patches, embed_dim)
 
         x = x.reshape(x.shape[0], self.num_patch_y, self.num_patch_x, -1)
