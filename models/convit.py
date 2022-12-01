@@ -7,6 +7,8 @@ import pytorch_lightning as pl
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from typing import Tuple
 
+from models.modules import BayerDecomposer
+
 
 class Mlp(nn.Module):
     def __init__(
@@ -822,6 +824,146 @@ class CustomConViTEventsB(pl.LightningModule):
         self.mse = torchmetrics.functional.mean_squared_error
 
     def forward(self, x: torch.Tensor):
+        x = self.convvit(x)
+        # x.shape = (batch_size, num_patches, embed_dim)
+
+        x = x.reshape(x.shape[0], self.num_patch_y, self.num_patch_x, -1)
+        x = x.permute(0, 3, 1, 2)
+        x = self.conv_decoder(x)
+        return x
+
+    def training_step(self, train_batch, batch_idx):
+        X, y = train_batch
+        y = torch.einsum("bhwc -> bchw", y)
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("train_loss", loss)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.log("train_MSE", mse)
+        self.log("train_SSIM", ssim)
+
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        X, y = val_batch
+        y = torch.einsum("bhwc -> bchw", y)
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("val_loss", loss)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+
+        if not self.color_output:
+            images_rgb = torch.repeat_interleave(model_images, 3, 1)
+            y_rgb = torch.repeat_interleave(y, 3, 1)
+            self.lpips(images_rgb, y_rgb)
+        else:
+            self.lpips(model_images, y)
+
+        self.log("val_MSE", mse)
+        self.log("val_SSIM", ssim)
+        self.log("val_LPIPS", self.lpips)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def predict_images(self, batch):
+        events, images = batch
+        return self(events)
+
+
+class CustomConViTEventsC(pl.LightningModule):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        embed_dim: int,
+        num_heads: int,
+        num_layers: int,
+        learning_rate: float,
+        color_output: bool = True,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.input_shape = input_shape
+        self.p_h, self.p_w = patch_size
+        self.num_patch_y = input_shape[1] // self.p_h // 2
+        self.num_patch_x = input_shape[2] // self.p_w // 2
+        self.lr = learning_rate
+        self.color_output = color_output
+
+        self.bayer_decomp = BayerDecomposer()
+
+        bins, h, w = input_shape
+        self.convvit = CustomConViT(
+            (h // 2, w // 2),
+            patch_size,
+            bins * 4,
+            embed_dim,
+            num_layers,
+            num_heads,
+        )
+
+        out_filters = 3 if self.color_output else 1
+
+        self.conv_decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(embed_dim, 128, 3, padding=1),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(128, 128, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(128, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.Conv2d(32, out_filters, 3, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+        # Normalize should be True if images are in [0, 1] (False -> [-1, +1])
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+            net_type="vgg", normalize=True
+        )
+        self.ssim = torchmetrics.functional.structural_similarity_index_measure
+        self.mse = torchmetrics.functional.mean_squared_error
+
+    def forward(self, x: torch.Tensor):
+        batch_size, bins, h, w = x.shape
+        x = x.reshape(batch_size * bins, h, w)
+        x = self.bayer_decomp(x)
+
+        channels, new_h, new_w = x.shape[1:]
+        x = x.reshape(batch_size, bins * channels, new_h, new_w)
         x = self.convvit(x)
         # x.shape = (batch_size, num_patches, embed_dim)
 
