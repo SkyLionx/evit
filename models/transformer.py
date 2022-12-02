@@ -825,5 +825,5 @@ class TransformerC(TransformerBase):
         return x
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.1)
         return optimizer
