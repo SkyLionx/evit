@@ -823,3 +823,96 @@ class TransformerC(TransformerBase):
         x = self.conv_decoder(x)
 
         return x
+
+
+class TransformerD(TransformerBase):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        encoder_dim: int,
+        decoder_dim: int,
+        conv_dim: int,
+        heads: int,
+        layers_number: int,
+        learning_rate: float,
+        warmup_steps: int,
+    ):
+        super().__init__(learning_rate)
+        self.warmup_steps = warmup_steps
+        self.conv_dim = conv_dim
+
+        self.pw, self.ph = patch_size
+        self.bins, self.h, self.w = input_shape
+        self.n_patches_x = self.w // self.pw
+        self.n_patches_y = self.h // self.ph
+        self.n_patches = self.n_patches_x * self.n_patches_y
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        self.encoder_proj = torch.nn.Linear(self.bins * self.pw * self.ph, encoder_dim)
+
+        self.pos_enc = PositionalEncoding(
+            encoder_dim, max_len=self.bins * self.n_patches
+        )
+
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            encoder_dim, heads, batch_first=True
+        )
+        self.transf_enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
+
+        self.decoder_proj = torch.nn.Linear(encoder_dim, decoder_dim)
+        self.dec_pos_emb = torch.nn.Embedding(8 * 8, decoder_dim)
+        dec_layer = torch.nn.TransformerDecoderLayer(
+            decoder_dim, heads, batch_first=True
+        )
+        self.transf_dec = torch.nn.TransformerDecoder(dec_layer, layers_number)
+
+        self.conv_proj = torch.nn.Linear(decoder_dim, conv_dim)
+
+        self.conv_dec = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(128, 128, 3, padding=1),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(128, 128, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(128, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 64, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.ConvTranspose2d(32, 3, 3, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor):
+        batch_size, bins, h, w = x.shape
+        x = self.patch_extractor(x)
+
+        x = x.reshape(batch_size, bins, self.n_patches, self.ph * self.pw)
+        x = x.permute(0, 2, 1, 3)
+        x = x.reshape(batch_size, self.n_patches, bins * self.ph * self.pw)
+        x = self.encoder_proj(x)
+
+        x = self.pos_enc(x)
+        x = self.transf_enc(x)
+
+        x = self.decoder_proj(x)
+
+        emb = self.dec_pos_emb(torch.arange(8 * 8, device=x.device))
+        batch_size = x.shape[0]
+        emb = emb.unsqueeze(0).repeat(batch_size, 1, 1)
+        x = self.transf_dec(emb, x)
+
+        x = self.conv_proj(x)
+        x = x.reshape(batch_size, 8, 8, self.conv_dim)
+        x = x.permute(0, 3, 1, 2)
+        x = self.conv_dec(x)
+
+        return x
