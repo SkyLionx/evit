@@ -996,7 +996,9 @@ class StudentK(StudentBase):
         self.linear_proj = torch.nn.Linear(bins * self.ph * self.pw, EMBED_DIM)
 
         self.pos_enc = PositionalEncoding(EMBED_DIM)
-        enc_layer = torch.nn.TransformerEncoderLayer(EMBED_DIM, num_heads)
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            EMBED_DIM, num_heads, activation=torch.nn.LeakyReLU()
+        )
         self.transf_enc = torch.nn.TransformerEncoder(enc_layer, num_layers)
 
     def forward(self, x: torch.Tensor):
@@ -1020,6 +1022,17 @@ class StudentK(StudentBase):
         x = self.teacher.decoder(x)
 
         return x, features
+
+    def configure_optimizers(self):
+        optim = torch.optim.Adam(self.parameters(), lr=self.lr)
+        lr_scheduler_config = {
+            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optim, mode="max", verbose=True
+            ),
+            "interval": "epoch",
+            "monitor": "val_SSIM",
+        }
+        return {"optimizer": optim, "lr_scheduler": lr_scheduler_config}
 
 
 if __name__ == "__main__":

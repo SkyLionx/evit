@@ -1,6 +1,6 @@
 from utils import LogImagesCallback, KerasProgressBar, ColabSaveCallback, is_using_colab
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
 import torch
 from typing import Dict, Any
@@ -15,6 +15,7 @@ def train_model(
     PARAMS: Dict[str, Any],
 ):
     callbacks = []
+    callbacks.append(LearningRateMonitor())
     callbacks.append(LogImagesCallback(train_batch, valid_batch, n=5, n_epochs=5))
     callbacks.append(KerasProgressBar())
     if is_using_colab():
