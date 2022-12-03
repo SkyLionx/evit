@@ -19,6 +19,8 @@ def get_model(model_params: Dict[str, Any]):
         module_name = "models.tests"
     elif "ConViT" in model_name:
         module_name = "models.convit"
+    elif model_name == "Events2Image":
+        module_name = "models.2dretr"
     else:
         raise Exception("Model " + model_name + " not supported.")
 
