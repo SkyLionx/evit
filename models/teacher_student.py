@@ -954,6 +954,74 @@ class StudentJ(StudentBase):
         return x, features
 
 
+class StudentK(StudentBase):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        input_shape: Tuple[int, int, int],
+        num_heads: int,
+        num_layers: int,
+        features_weight: float,
+        images_weight: float,
+        lr: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+        self.teacher = teacher
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+        self.lr = lr
+
+        # Freeze teacher parameters
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        # Required in order to obtain 8x8=64 patches
+        PATCH_SIZE = (16, 16)
+
+        self.patch_extractor = PatchExtractor(PATCH_SIZE)
+
+        bins, h, w = input_shape
+        self.ph, self.pw = PATCH_SIZE
+        self.num_patches_y = h // self.ph
+        self.num_patches_x = w // self.pw
+        self.num_patches = self.num_patches_y * self.num_patches_x
+
+        self.patches = PatchExtractor(PATCH_SIZE)
+
+        # Required by the teacher decoder a feature map of shape (128, 8, 8)
+        EMBED_DIM = 128
+
+        self.linear_proj = torch.nn.Linear(bins * self.ph * self.pw, EMBED_DIM)
+
+        self.pos_enc = PositionalEncoding(EMBED_DIM)
+        enc_layer = torch.nn.TransformerEncoderLayer(EMBED_DIM, num_heads)
+        self.transf_enc = torch.nn.TransformerEncoder(enc_layer, num_layers)
+
+    def forward(self, x: torch.Tensor):
+        batch_size, bins, h, w = x.shape
+
+        x = self.patches(x)
+        # x.shape = (batch_size, bins * num_patches, h * w)
+        x = x.reshape(batch_size, bins, self.num_patches, self.ph * self.pw)
+        x = x.transpose(1, 2)
+        x = x.reshape(batch_size, self.num_patches, bins * self.ph * self.pw)
+
+        x = self.linear_proj(x)
+
+        x = self.pos_enc(x)
+        x = self.transf_enc(x)
+
+        x = x.reshape(batch_size, self.num_patches_y, self.num_patches_x, 128)
+        x = x.permute(0, 3, 1, 2)
+        features = x
+
+        x = self.teacher.decoder(x)
+
+        return x, features
+
+
 if __name__ == "__main__":
     from torchinfo import summary
 
