@@ -11,6 +11,8 @@ from models.modules import (
     ResBlockTranspose,
 )
 
+from models.convit import CustomConViT
+
 
 class Teacher(pl.LightningModule):
     def __init__(self, lr: float):
@@ -1033,6 +1035,57 @@ class StudentK(StudentBase):
             "monitor": "val_SSIM",
         }
         return {"optimizer": optim, "lr_scheduler": lr_scheduler_config}
+
+
+class StudentL(StudentBase):
+    def __init__(
+        self,
+        teacher: torch.nn.Module,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        embed_dim: int,
+        num_heads: int,
+        num_layers: int,
+        features_weight: float,
+        images_weight: float,
+        learning_rate: float,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+
+        # Freeze teacher parameters
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        self.teacher = teacher
+        self.input_shape = input_shape
+        self.p_h, self.p_w = patch_size
+        self.num_patch_y = input_shape[1] // self.p_h
+        self.num_patch_x = input_shape[2] // self.p_w
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+        self.lr = learning_rate
+
+        bins, h, w = input_shape
+        self.convvit = CustomConViT(
+            input_shape[1:],
+            patch_size,
+            bins,
+            embed_dim,
+            num_layers,
+            num_heads,
+        )
+
+    def forward(self, x: torch.Tensor):
+        x = self.convvit(x)
+        # x.shape = (batch_size, num_patches, embed_dim)
+
+        x = x.reshape(x.shape[0], self.num_patch_y, self.num_patch_x, -1)
+        x = x.permute(0, 3, 1, 2)
+        features = x
+        x = self.teacher.decoder(x)
+        return x, features
 
 
 if __name__ == "__main__":
