@@ -11,7 +11,7 @@ from models.modules import (
     ResBlockTranspose,
 )
 
-from models.convit import CustomConViT
+from models.convit import CustomConViT, PatchEmbed
 
 
 class Teacher(pl.LightningModule):
@@ -1086,6 +1086,90 @@ class StudentL(StudentBase):
         features = x
         x = self.teacher.decoder(x)
         return x, features
+
+
+class TeacherTest(Teacher):
+    def _build_encoder(self):
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(3, 8, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(8),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(8, 16, 2, 2, padding=0, bias=False),
+            torch.nn.Conv2d(16, 16, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(16, 16, 2, 2, padding=0, bias=False),
+            torch.nn.Conv2d(16, 16, 3, padding=1, bias=False),
+            torch.nn.ReLU(),
+        )
+        # Feature map shape = (16, 32, 32)
+
+    def _build_decoder(self):
+        return torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(16, 16, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(16, 16, 2, 2, padding=0, bias=False),
+            torch.nn.ConvTranspose2d(16, 16, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(16),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(16, 16, 2, 2, padding=0, bias=False),
+            torch.nn.ConvTranspose2d(16, 8, 3, padding=1, bias=False),
+            torch.nn.BatchNorm2d(8),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(8, 3, 3, padding=1, bias=False),
+            torch.nn.Sigmoid(),
+        )
+
+
+class StudentTest(StudentBase):
+    def __init__(
+        self, teacher, num_heads, num_layers, features_weight, images_weight, lr
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["teacher"])
+
+        teacher.eval()
+        for param in teacher.parameters():
+            param.requires_grad = False
+
+        self.teacher = teacher
+
+        self.lr = lr
+        self.features_weight = features_weight
+        self.images_weight = images_weight
+
+        img_size = 128
+        patch_size = 4
+        in_chans = 10
+        embed_dim = 16
+        self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim)
+
+        transf_enc_layer = torch.nn.TransformerEncoderLayer(embed_dim, num_heads)
+        self.transf_enc = torch.nn.TransformerEncoder(transf_enc_layer, num_layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.patch_embed(x)
+        # x.shape = (batch_size, 32*32, 16)
+        x = self.transf_enc(x)
+        x = x.reshape(x.shape[0], 32, 32, 16)
+        x = x.permute(0, 3, 1, 2)
+        features = x
+
+        with torch.no_grad():
+            x = self.teacher.decoder(x)
+        return x, features
+
+    def configure_optimizers(self):
+        optim = torch.optim.Adam(self.parameters(), lr=self.lr)
+        lr_scheduler_config = {
+            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optim, mode="max", verbose=True
+            ),
+            "interval": "epoch",
+            "monitor": "val_SSIM",
+        }
+        return {"optimizer": optim, "lr_scheduler": lr_scheduler_config}
 
 
 if __name__ == "__main__":

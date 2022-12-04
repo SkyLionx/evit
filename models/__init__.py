@@ -32,7 +32,7 @@ def get_model(model_params: Dict[str, Any]):
         teacher_name = model_params["teacher"]
         teacher_path = model_params["teacher_path"]
 
-        from models.teacher_student import Teacher, TeacherTanh
+        from models.teacher_student import Teacher, TeacherTanh, TeacherTest
 
         if teacher_name == "Teacher":
             if is_using_colab():
@@ -42,6 +42,10 @@ def get_model(model_params: Dict[str, Any]):
             if is_using_colab():
                 os.system("gdown 1hXs6J68UZ1aWgkY-taRyNe4hlR3XiyX7")
             teacher = TeacherTanh.load_from_checkpoint(teacher_path, lr=1e-3)
+        elif teacher_name == "TeacherTest":
+            if is_using_colab():
+                os.system("gdown 1k_mimTWo8dsNBuePdWLIUz6smL_D0KoG")
+            teacher = TeacherTest.load_from_checkpoint(teacher_path, lr=1e-3)
 
         model_params["MODEL_PARAMS"]["teacher"] = teacher
 
