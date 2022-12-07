@@ -48,6 +48,36 @@ def tb_images_to_videos(experiment_path, out_path, fps=15):
         tb_images_to_video(event_acc, tag, path, fps=fps)
 
 
+def tb_retrieve_best_metric(
+    experiment_path, target_metric, mode, additional_metrics=[]
+):
+    event_acc = event_accumulator.EventAccumulator(experiment_path)
+    event_acc.Reload()
+
+    best_additional_values = []
+
+    events = event_acc.Scalars(target_metric)
+    values = [event.value for event in events]
+    if mode == "max":
+        best_idx = np.argmax(values)
+    else:
+        best_idx = np.argmin(values)
+    best_value = values[best_idx]
+
+    output = (best_idx, best_value)
+
+    for metric in additional_metrics:
+        events = event_acc.Scalars(metric)
+        values = [event.value for event in events]
+        best_value = values[best_idx]
+        best_additional_values.append(best_value)
+
+    if additional_metrics:
+        output = (output, best_additional_values)
+
+    return output
+
+
 class TB_Report:
     def __init__(self, runs_paths, tags_to_show) -> None:
         self.runs_paths = runs_paths
@@ -102,21 +132,31 @@ class TB_Report:
 
 
 if __name__ == "__main__":
-    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
+    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\Materiale da mostrare\12-05\lightning_logs\Large - 1 il, 1e-2 fl, bn relu, maxpool, polarity fix"
     # run_name = "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu"
     # tb_images_to_videos(os.path.join(experiment_path, run_name), run_name)
 
-    base_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
-    paths = [
-        os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-2 fl"),
-        os.path.join(base_path, "Large, Long - 1 il, 1e-2 fl, bn relu, maxpool"),
-        # os.path.join(
-        #     base_path, "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu, strided conv"
-        # ),
-        # os.path.join(base_path, "Large - 32-64 conv, 0.8 il, 0.2 fl"),
-    ]
-    tags_to_show = {
-        "scalars": ["train_loss", "val_MSE", "val_SSIM", "val_LPIPS"],
-        "images": ["train", "valid"],
-    }
-    TB_Report(paths, tags_to_show).generate()
+    # base_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
+    # paths = [
+    #     os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-2 fl"),
+    #     os.path.join(base_path, "Large, Long - 1 il, 1e-2 fl, bn relu, maxpool"),
+    #     # os.path.join(
+    #     #     base_path, "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu, strided conv"
+    #     # ),
+    #     # os.path.join(base_path, "Large - 32-64 conv, 0.8 il, 0.2 fl"),
+    # ]
+    # tags_to_show = {
+    #     "scalars": ["train_loss", "val_MSE", "val_SSIM", "val_LPIPS"],
+    #     "images": ["train", "valid"],
+    # }
+    # TB_Report(paths, tags_to_show).generate()
+
+    (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
+        experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
+    )
+
+    print(
+        "MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
+            best_mse, best_ssim, best_lpips
+        )
+    )
