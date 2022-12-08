@@ -354,7 +354,7 @@ class VisionTransformerConv(pl.LightningModule):
         self.token_dim = self.p_w * self.p_h
 
         self.conv_encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(10, 32, 2, padding="same"),
+            torch.nn.Conv2d(10, 32, 3, padding="same"),
             torch.nn.BatchNorm2d(32),
             torch.nn.ReLU(),
             torch.nn.Conv2d(32, 32, 3, padding="same"),

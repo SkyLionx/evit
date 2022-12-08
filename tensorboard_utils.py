@@ -151,12 +151,29 @@ if __name__ == "__main__":
     # }
     # TB_Report(paths, tags_to_show).generate()
 
-    (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
-        experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
+    # (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
+    #     experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
+    # )
+
+    # print(
+    #     "Best Epoch: {}, MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
+    #         best_idx, best_mse, best_ssim, best_lpips
+    #     )
+    # )
+
+    (best_idx, best_val_loss), (
+        best_mse,
+        best_ssim,
+        best_lpips,
+    ) = tb_retrieve_best_metric(
+        experiment_path,
+        "val_loss",
+        "min",
+        additional_metrics=["val_MSE", "val_SSIM", "val_LPIPS"],
     )
 
     print(
-        "MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
-            best_mse, best_ssim, best_lpips
+        "Best Epoch: {}, MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
+            best_idx, best_mse, best_ssim, best_lpips
         )
     )

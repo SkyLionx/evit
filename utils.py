@@ -86,6 +86,46 @@ class ColabSaveCallback(pl.Callback):
         self._execute_commands()
 
 
+def compare_gt_plot(
+    predict: torch.Tensor,
+    gt: torch.Tensor,
+    permute_predict=True,
+    permute_gt=False,
+) -> plt.Figure:
+    """
+    Create a plot to compare the predicted image with the ground truth.
+
+    Args:
+        predict (torch.Tensor): predicted image.
+        gt (torch.Tensor): ground truh.
+        permute_predict (bool, optional): permute prediction from CHW to HWC. Defaults to True.
+        permute_gt (bool, optional): permute ground truth from CHW to HWC. Defaults to False.
+
+    Returns:
+        plt.Figure: matplotlib generated figure.
+    """
+    if permute_predict:
+        predict = predict.permute(1, 2, 0)
+    if permute_gt:
+        gt = gt.permute(1, 2, 0)
+
+    predict = predict.detach().cpu().numpy()
+    gt = gt.detach().cpu().numpy()
+
+    fig = plt.figure()
+    plt.subplot(1, 2, 1)
+    plt.title("Model Output")
+    plt.axis("off")
+    plt.imshow(predict.squeeze(), cmap="gray")
+    plt.subplot(1, 2, 2)
+    plt.title("Ground Truth")
+    plt.axis("off")
+    plt.tight_layout()
+    plt.imshow(gt.squeeze(), cmap="gray")
+
+    return fig
+
+
 class LogImagesCallback(pl.Callback):
     """
     Callback to be used with the TensorBoard logger in order to save training and
@@ -130,35 +170,14 @@ class LogImagesCallback(pl.Callback):
             train_out = pl_module((train_X, train_y))
             valid_out = pl_module((valid_X, valid_y))
 
-        train_figs = [
-            self._create_plot(train_out[i], train_y[i]) for i in range(self.n)
-        ]
-        valid_figs = [
-            self._create_plot(valid_out[i], valid_y[i]) for i in range(self.n)
-        ]
+        train_figs = [compare_gt_plot(train_out[i], train_y[i]) for i in range(self.n)]
+        valid_figs = [compare_gt_plot(valid_out[i], valid_y[i]) for i in range(self.n)]
 
         trainer.logger.experiment.add_figure(f"train", train_figs, epoch)
         trainer.logger.experiment.add_figure(f"valid", valid_figs, epoch)
 
         for fig in train_figs + valid_figs:
             fig.clear()
-
-    def _create_plot(self, out, gt):
-        out = torch.permute(out, (1, 2, 0)).detach().cpu().numpy()
-        gt = gt.detach().cpu().numpy()
-
-        fig = plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.title("Model Output")
-        plt.axis("off")
-        plt.imshow(out.squeeze(), cmap="gray")
-        plt.subplot(1, 2, 2)
-        plt.title("Ground Truth")
-        plt.axis("off")
-        plt.tight_layout()
-        plt.imshow(gt.squeeze(), cmap="gray")
-
-        return fig
 
 
 class KerasProgressBar(ProgressBarBase):
