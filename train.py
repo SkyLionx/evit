@@ -26,7 +26,7 @@ def train_model(
         callbacks.append(colab_cb)
 
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss", mode="min", save_last=True
+        monitor="val_LPIPS", mode="min", save_last=True
     )
     checkpoint_callback.CHECKPOINT_NAME_LAST = "{epoch}-last"
     callbacks.append(checkpoint_callback)
