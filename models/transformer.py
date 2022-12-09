@@ -674,6 +674,164 @@ class ViTransformerConvSmall(pl.LightningModule):
         return self(events)[0]
 
 
+class ViTTransformerConvSkip(pl.LightningModule):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        patch_size: Tuple[int, int],
+        heads: int,
+        layers_number: int,
+        learning_rate: float,
+        color_output: bool = True,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.input_shape = input_shape
+        self.bins, self.h, self.w = self.input_shape
+        self.p_h, self.p_w = patch_size
+        self.lr = learning_rate
+        self.color_output = color_output
+
+        self.token_dim = self.p_w * self.p_h
+
+        self.conv_encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 32, 3, padding="same"),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(2),
+            torch.nn.Conv2d(32, 64, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(64, 64, 3, padding="same"),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+        )
+
+        self.patch_extractor = PatchExtractor(patch_size)
+
+        self.pe = PositionalEncoding(self.token_dim, max_len=2048)
+        enc_layer = torch.nn.TransformerEncoderLayer(
+            d_model=self.token_dim, nhead=heads, batch_first=True
+        )
+        self.enc = torch.nn.TransformerEncoder(enc_layer, layers_number)
+
+        out_filters = 3 if self.color_output else 1
+
+        self.conv_decoder = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(64, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(64, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 2, 2, padding=0),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(32, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, out_filters, 3, padding=1),
+            torch.nn.Sigmoid(),
+        )
+
+        # Normalize should be True if images are in [0, 1] (False -> [-1, +1])
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
+            net_type="vgg", normalize=True
+        )
+        self.ssim = torchmetrics.functional.structural_similarity_index_measure
+        self.mse = torchmetrics.functional.mean_squared_error
+
+    def forward(self, x: torch.Tensor):
+        batch, bins, h, w = x.shape
+
+        x = self.conv_encoder(x)
+        x_features_pre = x
+
+        # Save the output shape for later
+        _, out_filters, new_h, new_w = x.shape
+        num_patches_x = new_w // self.p_w
+        num_patches_y = new_h // self.p_h
+
+        x = self.patch_extractor(x)
+
+        x = self.pe(x)
+        x = self.enc(x)
+
+        x = x.reshape(
+            batch, out_filters, num_patches_y, num_patches_x, self.p_h, self.p_w
+        )
+        x = torch.einsum("btyxhw -> btyhxw", x)
+        x = x.reshape(batch, out_filters, new_h, new_w)
+
+        x = x + x_features_pre
+
+        x = self.conv_decoder(x)
+
+        return x
+
+    def training_step(self, train_batch, batch_idx):
+        X, y = train_batch
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("train_loss", loss)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+        self.log("train_MSE", mse)
+        self.log("train_SSIM", ssim)
+
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        X, y = val_batch
+        X = X[:, :, : self.h, : self.w]
+        y = torch.einsum("bhwc -> bchw", y)[:, :, : self.h, : self.w]
+
+        model_images = self(X)
+
+        criterion = torch.nn.MSELoss()
+
+        loss = criterion(model_images, y)
+
+        self.log("val_loss", loss)
+
+        # Compute metrics
+        mse = self.mse(model_images, y)
+        ssim = self.ssim(model_images, y, data_range=1)
+
+        if not self.color_output:
+            images_rgb = torch.repeat_interleave(model_images, 3, 1)
+            y_rgb = torch.repeat_interleave(y, 3, 1)
+            self.lpips(images_rgb, y_rgb)
+        else:
+            self.lpips(model_images, y)
+        self.log("val_MSE", mse)
+        self.log("val_SSIM", ssim)
+        self.log("val_LPIPS", self.lpips)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def predict_images(self, batch):
+        events, images = batch
+        return self(events)
+
+
 class TransformerBase(pl.LightningModule):
     def __init__(self, lr: float):
         super().__init__()
