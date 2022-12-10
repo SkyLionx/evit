@@ -508,6 +508,23 @@ class VisionTransformerConv(pl.LightningModule):
         return self(events)[0]
 
 
+def predict_color_images(self, batch: torch.Tensor):
+    events, images = batch
+    out_images = []
+    for event_grid, image in zip(events, images):
+        r = event_grid[:, 0::2, 0::2]
+        g = (event_grid[:, 0::2, 1::2] + event_grid[:, 1::2, 0::2]) / 2
+        b = event_grid[:, 1::2, 1::2]
+        x = torch.stack([r, g, b])
+
+        up = torch.nn.Upsample(scale_factor=(2, 2), mode="bilinear")
+        x = up(x)
+
+        out_image = self(x)[0].squeeze()
+        out_images.append(out_image)
+    return torch.stack(out_images)
+
+
 class ViTransformerConvSmall(pl.LightningModule):
     def __init__(
         self,

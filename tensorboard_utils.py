@@ -132,7 +132,8 @@ class TB_Report:
 
 
 if __name__ == "__main__":
-    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\Materiale da mostrare\12-05\lightning_logs\Large - 1 il, 1e-2 fl, bn relu, maxpool, polarity fix"
+    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\Materiale da mostrare\12-05\lightning_logs\Large - 1 il, 1e-2 fl, bn relu, maxpool, polarity fix"
+    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\Large - VisionTransformerConv final"
     # run_name = "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu"
     # tb_images_to_videos(os.path.join(experiment_path, run_name), run_name)
 
@@ -151,25 +152,8 @@ if __name__ == "__main__":
     # }
     # TB_Report(paths, tags_to_show).generate()
 
-    # (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
-    #     experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
-    # )
-
-    # print(
-    #     "Best Epoch: {}, MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
-    #         best_idx, best_mse, best_ssim, best_lpips
-    #     )
-    # )
-
-    (best_idx, best_val_loss), (
-        best_mse,
-        best_ssim,
-        best_lpips,
-    ) = tb_retrieve_best_metric(
-        experiment_path,
-        "val_loss",
-        "min",
-        additional_metrics=["val_MSE", "val_SSIM", "val_LPIPS"],
+    (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
+        experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
     )
 
     print(
@@ -177,3 +161,20 @@ if __name__ == "__main__":
             best_idx, best_mse, best_ssim, best_lpips
         )
     )
+
+    # (best_idx, best_val_loss), (
+    #     best_mse,
+    #     best_ssim,
+    #     best_lpips,
+    # ) = tb_retrieve_best_metric(
+    #     experiment_path,
+    #     "val_loss",
+    #     "min",
+    #     additional_metrics=["val_MSE", "val_SSIM", "val_LPIPS"],
+    # )
+
+    # print(
+    #     "Best Epoch: {}, MSE: {:.4f}, SSIM: {:.4f}, LPIPS: {:.4f}".format(
+    #         best_idx, best_mse, best_ssim, best_lpips
+    #     )
+    # )

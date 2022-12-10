@@ -789,6 +789,7 @@ def get_dataset(base_path: str, dataset_name: str, dataset_params: Dict[str, Any
     AVAILABLE_DATASETS = {
         "DIV2K_5_FIX": "16AQwtfUwolXpyvbZdtl6KaFJadRgDuNi",
         "DIV2K_5_FIX_SMALL": "1aakiGo_wCjQq3g6N8nl_IBl6a2DvsSCp",
+        "DIV2K_5_BW_FIX": "1zx0HmHF5qdDQOxBErjTAruBCZd9aY9rz",
     }
 
     dataset_name = dataset_name.upper()
