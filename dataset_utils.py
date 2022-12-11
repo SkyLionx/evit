@@ -18,7 +18,7 @@ from media_utils import (
     Model,
     save_video_tensors,
 )
-from utils import is_using_colab
+from my_utils import is_using_colab
 
 import rosbag
 from bagpy import bagreader
@@ -731,7 +731,7 @@ def generate_batches_from_dataset_files(src_folder, dst_folder, compress, resume
         print("\n".join(failed_files))
 
 
-def get_div2k_dataset(dataset_name, dataset_path, dataset_params):
+def get_div2k_dataset(dataset_name, dataset_path, dataset_params, splits=None):
     from dataset import DIV2KDataset
 
     train_datasets_names = ["{:04}".format(i) for i in range(1, 800 + 1)]
@@ -741,50 +741,66 @@ def get_div2k_dataset(dataset_name, dataset_path, dataset_params):
         train_datasets_names = ["{:04}".format(i) for i in range(1, 25 + 1)]
         valid_datasets_names = ["{:04}".format(i) for i in range(801, 805 + 1)]
 
-    train_dataset = DIV2KDataset(
-        dataset_path, sequences=train_datasets_names, **dataset_params
-    )
-    valid_dataset = DIV2KDataset(
-        dataset_path, sequences=valid_datasets_names, **dataset_params
-    )
+    output_datasets = []
 
-    return train_dataset, valid_dataset
+    if splits is None or "train" in splits:
+        train_dataset = DIV2KDataset(
+            dataset_path, sequences=train_datasets_names, **dataset_params
+        )
+        output_datasets.append(train_dataset)
+    if splits is None or "valid" in splits:
+        valid_dataset = DIV2KDataset(
+            dataset_path, sequences=valid_datasets_names, **dataset_params
+        )
+        output_datasets.append(valid_dataset)
+
+    return output_datasets
 
 
-def get_ced_dataset(dataset_name, dataset_path, dataset_params):
+def get_ced_dataset(dataset_name, dataset_path, dataset_params, splits=None):
     from dataset import CEDDataset
 
+    output_datasets = []
+
     train_datasets_names = ["simple_color_keyboard_1", "simple_fruit"]
-    train_dataset = CEDDataset(
-        dataset_path,
-        sequences=train_datasets_names,
-        ignore_input_image=True,
-        **dataset_params
-    )
+    if splits is None or "train" in splits:
+        train_dataset = CEDDataset(
+            dataset_path,
+            sequences=train_datasets_names,
+            ignore_input_image=True,
+            **dataset_params
+        )
+        output_datasets.append(train_dataset)
 
     valid_datasets_names = ["simple_rabbits"]
-    valid_dataset = CEDDataset(
-        dataset_path,
-        sequences=valid_datasets_names,
-        ignore_input_image=True,
-        **dataset_params
-    )
+    if splits is None or "valid" in splits:
+        valid_dataset = CEDDataset(
+            dataset_path,
+            sequences=valid_datasets_names,
+            ignore_input_image=True,
+            **dataset_params
+        )
+        output_datasets.append(valid_dataset)
 
     test_datasets_names = [
         "simple_color_keyboard_2",
         "simple_jenga_1",
         "simple_wires_1",
     ]
-    test_dataset = CEDDataset(
-        dataset_path,
-        sequences=test_datasets_names,
-        ignore_input_image=True,
-        **dataset_params
-    )
-    return train_dataset, valid_dataset, test_dataset
+    if splits is None or "test" in splits:
+        test_dataset = CEDDataset(
+            dataset_path,
+            sequences=test_datasets_names,
+            ignore_input_image=True,
+            **dataset_params
+        )
+        output_datasets.append(test_dataset)
+    return output_datasets
 
 
-def get_dataset(base_path: str, dataset_name: str, dataset_params: Dict[str, Any]):
+def get_dataset(
+    base_path: str, dataset_name: str, dataset_params: Dict[str, Any], splits=None
+):
     # Map from dataset name to Google Drive ID
     AVAILABLE_DATASETS = {
         "DIV2K_5_FIX": "16AQwtfUwolXpyvbZdtl6KaFJadRgDuNi",
@@ -826,20 +842,25 @@ def get_dataset(base_path: str, dataset_name: str, dataset_params: Dict[str, Any
             raise Exception("Couldn't find the dataset in " + dataset_path)
 
     if "DIV2K" in dataset_name:
-        train_dataset, valid_dataset = get_div2k_dataset(
-            dataset_name, dataset_path, dataset_params
+        datasets = get_div2k_dataset(
+            dataset_name, dataset_path, dataset_params, splits=splits
         )
     elif "CED" in dataset_name:
-        train_dataset, valid_dataset, test_dataset = get_ced_dataset(
-            dataset_name, dataset_path, dataset_params
+        datasets = get_ced_dataset(
+            dataset_name, dataset_path, dataset_params, splits=splits
         )
 
-    # Check that there is no instersection between train and valid dataset
-    union = set(train_dataset.sequences).union(set(valid_dataset.sequences))
-    sum_of_lengths = len(train_dataset.sequences) + len(valid_dataset.sequences)
-    assert len(union) == sum_of_lengths, "Some datasets are in common"
+    # Check that there is no instersection among datasets
+    seq_union = set()
+    for dataset in datasets:
+        seq_union = seq_union.union(dataset.sequences)
+    sum_of_lengths = sum([len(ds.sequences) for ds in datasets])
+    assert len(seq_union) == sum_of_lengths, "Some datasets are in common"
 
-    return train_dataset, valid_dataset
+    if len(datasets) == 1:
+        return datasets[0]
+
+    return datasets
 
 
 if __name__ == "__main__":

@@ -335,3 +335,30 @@ def save_visual_accumulated_events(
                 vmax=255,
             )
             reconstructed_image = np.zeros(shape=(h, w), dtype=np.uint8)
+
+
+def gen_visual_bayer_events(event_grid):
+    first_bin = event_grid[len(event_grid) // 2]
+    h, w = first_bin.shape
+
+    r_rgb, g_rgb, G_rgb, b_rgb = np.ones((4, h // 2, w // 2, 3)) * 0.5
+
+    r = first_bin[0::2, 0::2]
+    g = first_bin[0::2, 1::2]
+    G = first_bin[1::2, 0::2]
+    b = first_bin[1::2, 1::2]
+
+    r_rgb[r > 0] = [1, 0, 0]
+    r_rgb[r < 0] = [0, 0, 0]
+    g_rgb[g > 0] = [0, 1, 0]
+    g_rgb[g < 0] = [0, 0, 0]
+    G_rgb[G > 0] = [0, 1, 0]
+    G_rgb[G < 0] = [0, 0, 0]
+    b_rgb[b > 0] = [0, 0, 1]
+    b_rgb[b < 0] = [0, 0, 0]
+
+    row1 = np.hstack((r_rgb, g_rgb))
+    row2 = np.hstack((G_rgb, b_rgb))
+    img = np.vstack((row1, row2))
+
+    return img

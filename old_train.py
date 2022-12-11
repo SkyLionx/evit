@@ -6,7 +6,7 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 
-from utils import format_current_date
+from my_utils import format_current_date
 
 
 def train_generic(

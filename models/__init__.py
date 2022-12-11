@@ -2,7 +2,7 @@ from typing import Dict, Any
 import importlib
 import os
 
-from utils import is_using_colab
+from my_utils import is_using_colab
 
 
 def get_model(model_params: Dict[str, Any]):

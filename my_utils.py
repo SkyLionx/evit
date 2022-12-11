@@ -7,14 +7,6 @@ import torch
 import matplotlib.pyplot as plt
 from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
-from torchmetrics import (
-    MeanSquaredError as MSE,
-    StructuralSimilarityIndexMeasure as SSIM,
-)
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity as LPIPS
-from tqdm import tqdm
-import json
-
 from IPython import get_ipython
 
 
@@ -282,60 +274,3 @@ class KerasProgressBar(ProgressBarBase):
         print(
             f"\r{self.train_batch_idx}/{self.total_train_batches} {progress} - {elapsed_time:.0f}s {formatted} - {metrics}"
         )
-
-
-def eval_model(
-    model: torch.nn.Module,
-    dataloader: torch.utils.data.DataLoader,
-    output_folder: str,
-    disable_progress=False,
-):
-
-    # Predict and save images
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    mse = MSE()
-    ssim = SSIM(data_range=1)
-    lpips = LPIPS(net_type="vgg", normalize=True)
-
-    i = 0
-    for batch in tqdm(dataloader, disable=disable_progress):
-        events, imgs = batch
-
-        # Compute results
-        model.eval()
-        with torch.no_grad():
-            out = model.predict_images(batch)
-
-        # Compute metrics
-        imgs = imgs.permute(0, 3, 1, 2)
-        greyscale_imgs = imgs.shape[1] == 1
-        mse(out, imgs)
-        ssim(out, imgs)
-        if greyscale_imgs:  # greyscale images
-            out_rgb = torch.repeat_interleave(out, 3, 1)
-            imgs_rgb = torch.repeat_interleave(imgs, 3, 1)
-            lpips(out_rgb, imgs_rgb)
-        else:
-            lpips(out, imgs)
-
-        # Save images and ground truths
-        for j in range(len(out)):
-            pred_img = out[j].permute(1, 2, 0).squeeze().detach().cpu().numpy()
-            gt_img = imgs[j].permute(1, 2, 0).squeeze().detach().cpu().numpy()
-            cmap = "gray" if greyscale_imgs else None
-            filename = f"{i:04}_pred.png"
-            plt.imsave(os.path.join(output_folder, filename), pred_img, cmap=cmap)
-            filename = f"{i:04}_gt.png"
-            plt.imsave(os.path.join(output_folder, filename), gt_img, cmap=cmap)
-            i += 1
-
-    # Save metrics
-    metrics = {
-        "MSE": mse.compute().item(),
-        "SSIM": ssim.compute().item(),
-        "LPIPS": lpips.compute().item(),
-    }
-    with open(os.path.join(output_folder, "metrics.json"), "w", encoding="utf8") as fp:
-        json.dump(metrics, fp)

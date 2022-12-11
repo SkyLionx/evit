@@ -1,4 +1,9 @@
-from utils import LogImagesCallback, KerasProgressBar, ColabSaveCallback, is_using_colab
+from my_utils import (
+    LogImagesCallback,
+    KerasProgressBar,
+    ColabSaveCallback,
+    is_using_colab,
+)
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
