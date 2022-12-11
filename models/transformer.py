@@ -4,9 +4,10 @@ import torch
 import torchmetrics
 import pytorch_lightning as pl
 import cv2
-from torchvision.models import vgg19, VGG19_Weights, VGG16_Weights
+from torchvision.models import vgg19, VGG19_Weights
 from torchvision.models.feature_extraction import create_feature_extractor
 from models.modules import PositionalEncoding, PatchExtractor, BayerDecomposer
+from dataset_utils import pad_events
 
 
 class TransformerModel(torch.nn.Module):
@@ -505,7 +506,17 @@ class VisionTransformerConv(pl.LightningModule):
 
     def predict_images(self, batch):
         events, images = batch
-        return self(events)[0]
+        batch_size, bins, h, w = events.shape
+
+        padding_needed = h % self.p_h != 0 or w % self.p_w != 0
+        if padding_needed:
+            events = pad_events(events, (self.p_h * 2, self.p_w * 2))
+
+        outs = self(events)[0]
+
+        if padding_needed:
+            outs = outs[:, :, :h, :w]
+        return outs
 
 
 def predict_color_images(self, batch: torch.Tensor):

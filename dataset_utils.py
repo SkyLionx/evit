@@ -863,6 +863,22 @@ def get_dataset(
     return datasets
 
 
+def get_padding_shape(starting_shape, patch_size):
+    h = patch_size[0] * (starting_shape[0] // patch_size[0] + 1)
+    w = patch_size[1] * (starting_shape[1] // patch_size[1] + 1)
+    return (h, w)
+
+
+def pad_events(event_grid, patch_size):
+    batch_size, bins, h, w = event_grid.shape
+    new_h, new_w = get_padding_shape([h, w], patch_size)
+    padded_grid = torch.zeros(
+        (batch_size, bins, new_h, new_w), device=event_grid.device, dtype=torch.float32
+    )
+    padded_grid[:, :, :h, :w] = event_grid
+    return padded_grid
+
+
 if __name__ == "__main__":
     files_folder = r"G:\VM\Shared Folder\bags\DIV2K_0.5_bw"
     output_folder = r"C:\datasets\preprocess_DIV2K_5_bw_fix"
