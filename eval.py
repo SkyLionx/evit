@@ -216,6 +216,33 @@ def eval_CED(results_path, checkpoint_path, bag_paths, num_predictions, min_n_ev
                 break
 
 
+def retrieve_best_images(folder):
+    from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+
+    lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg", normalize=True)
+
+    scores = {}
+
+    pred_img = gt_img = None
+    for image_file in sorted(os.listdir(folder)):
+        image_path = os.path.join(folder, image_file)
+
+        if "_pred" in image_path:
+            pred_img = plt.imread(image_path)[:, :, :3].transpose(2, 0, 1)
+        elif "_gt" in image_path:
+            gt_img = plt.imread(image_path)[:, :, :3].transpose(2, 0, 1)
+
+        if pred_img is not None and gt_img is not None:
+            lpips(
+                torch.from_numpy(pred_img[None, :]), torch.from_numpy(gt_img[None, :])
+            )
+            scores[image_file] = lpips.compute().item()
+            lpips.reset()
+            pred_img = gt_img = None
+
+    return list(sorted(scores.items(), key=lambda x: x[1]))
+
+
 if __name__ == "__main__":
     results_path = r"..\06 - Results"
 
