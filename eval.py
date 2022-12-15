@@ -176,8 +176,16 @@ def eval_EventsVisualization(results_path, dataset, show_images=False):
         i += 1
 
 
-def eval_CED(results_path, checkpoint_path, bag_paths, num_predictions, min_n_events):
+def eval_CED(
+    results_path,
+    checkpoint_path,
+    bag_paths,
+    num_predictions,
+    min_n_events,
+    normalize_events=None,
+):
     from models.transformer import VisionTransformerConv
+    from dataset import CustomDataset
 
     model = VisionTransformerConv.load_from_checkpoint(
         checkpoint_path,
@@ -197,12 +205,14 @@ def eval_CED(results_path, checkpoint_path, bag_paths, num_predictions, min_n_ev
         )
 
         dataset_name = os.path.basename(bag_path).replace(".bag", "")
-        output_path = os.path.join(results_path, "CED", dataset_name)
+        output_path = os.path.join(results_path, "CED_Normalized", dataset_name)
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         i = 0
         for events, img in test_gen:
+            if normalize_events:
+                events = CustomDataset._normalize_events(None, events, normalize_events)
             events = torch.from_numpy(events).to("cuda").unsqueeze(0)
             img = torch.from_numpy(img.astype(np.float32)).to("cuda").unsqueeze(0)
             out = model.predict_images((events, img))[0]
@@ -305,7 +315,14 @@ if __name__ == "__main__":
         "C:\datasets\CEDDataset\driving_country.bag",
         "C:\datasets\CEDDataset\driving_tunnel_sun.bag",
     ]
-    eval_CED(results_path, checkpoint_path, bag_paths, num_predictions, min_n_events)
+    eval_CED(
+        results_path,
+        checkpoint_path,
+        bag_paths,
+        num_predictions,
+        min_n_events,
+        normalize_events="z_score_non_zero",
+    )
 
     # E2VID on CED
     # Generate zip files from bags
