@@ -1,0 +1,15 @@
+bagpy==0.4.10
+einops==0.6.0
+ipython==8.7.0
+matplotlib==3.5.2
+numpy==1.23.1
+opencv_python==4.6.0.66
+pandas==1.4.3
+pytorch_lightning==1.7.4
+tensorboard==2.10.0
+timm==0.6.12
+torch==1.12.1+cu116
+torchinfo==1.7.0
+torchmetrics==0.10.0
+torchvision==0.13.1+cu116
+tqdm==4.64.0
