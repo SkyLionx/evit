@@ -2,17 +2,40 @@ import os
 import numpy as np
 import cv2
 from tensorboard.backend.event_processing import event_accumulator
+from tensorboard.backend.event_processing.event_accumulator import ImageEvent
 import matplotlib.pyplot as plt
 from media_utils import bgr_to_rgb
+from typing import List, Tuple, Dict
 
 
-def tb_decode_image_from_event(event):
+def tb_decode_image_from_event(event: ImageEvent) -> np.ndarray:
+    """
+    Create an image from a TensorBoard ImageEvent
+
+    Args:
+        event (ImageEvent): event of the image.
+
+    Returns:
+        np.ndarray: decoded image.
+    """
     s = np.frombuffer(event.encoded_image_string, dtype=np.uint8)
     image = cv2.imdecode(s, cv2.IMREAD_COLOR)
     return image
 
 
-def tb_images_to_video(event_acc, tag, out_path, fps):
+def tb_images_to_video(
+    event_acc: event_accumulator.EventAccumulator, tag: str, out_path: str, fps: int
+):
+    """
+    # Save one image tag as a progression video.
+
+    Args:
+        event_acc (event_accumulator.EventAccumulator): event accumulator of the experiment.
+        tag (str): tag of the images to save.
+        out_path (str): output folder where the video will be saved.
+        fps (int): fps of the video.
+    """
+
     events = event_acc.Images(tag)
 
     first_event = next(iter(events))
@@ -34,7 +57,15 @@ def tb_images_to_video(event_acc, tag, out_path, fps):
         out.write(image)
 
 
-def tb_images_to_videos(experiment_path, out_path, fps=15):
+def tb_images_to_videos(experiment_path: str, out_path: str, fps: int = 15):
+    """
+    Save each image tag as a progression video.
+
+    Args:
+        experiment_path (str): path of the experiment.
+        out_path (str): path where the video will be saved.
+        fps (int, optional): fps of the video. Defaults to 15.
+    """
     if not os.path.exists(out_path):
         os.mkdir(out_path)
 
@@ -49,8 +80,26 @@ def tb_images_to_videos(experiment_path, out_path, fps=15):
 
 
 def tb_retrieve_best_metric(
-    experiment_path, target_metric, mode, additional_metrics=[]
-):
+    experiment_path: str,
+    target_metric: str,
+    mode: str,
+    additional_metrics: List[str] = [],
+) -> Tuple:
+    """
+    Get the best metric value(s) and epoch from a run.
+
+    Args:
+        experiment_path (str): path of the TensorBoard experiment.
+        target_metric (str): metric to monitor.
+        mode (str): how the best metric is choesen. It can be "min" or "max".
+        additional_metrics (List[str], optional): list of additional metrics that will be returned
+        taken from the same epoch of the best metric. Defaults to [].
+
+    Returns:
+        Tuple: (best_epoch, best_metric_value) and if additional metrics are specified,
+        ((best_epoch, best_metric_value), (best_add_metric_value1, best_add_metric_value2, ...))
+    """
+    assert mode in ["min", "max"], "mode must be 'min' or 'max', it cannot be " + mode
     event_acc = event_accumulator.EventAccumulator(experiment_path)
     event_acc.Reload()
 
@@ -79,11 +128,28 @@ def tb_retrieve_best_metric(
 
 
 class TB_Report:
-    def __init__(self, runs_paths, tags_to_show) -> None:
+    def __init__(self, runs_paths: str, tags_to_show: Dict[str, List[str]]):
+        """
+        TensorBoard report with images and scalars plotted as graphs from multiple runs.
+
+        Args:
+            runs_paths (str): base path where the runs are stored.
+            tags_to_show (Dict[str, List[str]]): dictionary of tags that will be showed.
+            The keys can be "scalars" or "images" and the values must be lists of tags.
+        """
         self.runs_paths = runs_paths
         self.tags_to_show = tags_to_show
 
-    def _compute_rows(self):
+    def _compute_rows(self) -> Tuple[int, int]:
+        """
+        Compute how many rows the report should have.
+
+        Raises:
+            Exception: raised when a tag category is not supported.
+
+        Returns:
+            Tuple[int, int]: (number of scalars rows, number of images rows)
+        """
         scalars = 0
         images = 0
         for category, tags in self.tags_to_show.items():
@@ -95,7 +161,22 @@ class TB_Report:
                 raise Exception("Category {} is not supported.".format(category))
         return scalars, images
 
-    def generate(self, width=20, scalars_height=2, images_height=6):
+    def generate(
+        self,
+        output_path: str,
+        width: int = 20,
+        scalars_height: int = 2,
+        images_height: int = 6,
+    ):
+        """
+        Generate the report.
+
+        Args:
+            output_path (str): path of the figure that will be saved.
+            width (int, optional): width size of the figure. Defaults to 20.
+            scalars_height (int, optional): height of the scalars graphs. Defaults to 2.
+            images_height (int, optional): height of the images. Defaults to 6.
+        """
         scalars, images = self._compute_rows()
         rows = scalars + images
         height = scalars * scalars_height + images * images_height
@@ -124,19 +205,19 @@ class TB_Report:
                         axs[ax_idx].imshow(img)
                         axs[ax_idx].set_title(tag + " | " + run_name)
                         ax_idx += len(self.runs_paths) - run_idx
-        plt.savefig("Report.pdf")
-
-    # for tag in ["images"]:
-    #     path = os.path.join(out_path, tag + ".mp4")
-    #     tb_images_to_video(event_acc, tag, path, fps=fps)
+        plt.savefig(output_path)
 
 
 if __name__ == "__main__":
-    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\Materiale da mostrare\12-05\lightning_logs\Large - 1 il, 1e-2 fl, bn relu, maxpool, polarity fix"
-    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\Large - VisionTransformerConv final"
+    # Transform image progression into video
+    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\"
     # run_name = "Large - 32-64 conv, 1 il, 1e-2 fl, batchnorm relu"
     # tb_images_to_videos(os.path.join(experiment_path, run_name), run_name)
 
+    # experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\Materiale da mostrare\12-05\lightning_logs\Large - 1 il, 1e-2 fl, bn relu, maxpool, polarity fix"
+    experiment_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs\Large - VisionTransformerConv final"
+
+    # Generate TensorBoard report
     # base_path = r"E:\Cartelle Personali\Fabrizio\Universita\Magistrale\Tesi\05 - Experiments\lightning_logs"
     # paths = [
     #     os.path.join(base_path, "Large - 32-64 conv, 1 il, 1e-2 fl"),
@@ -150,8 +231,9 @@ if __name__ == "__main__":
     #     "scalars": ["train_loss", "val_MSE", "val_SSIM", "val_LPIPS"],
     #     "images": ["train", "valid"],
     # }
-    # TB_Report(paths, tags_to_show).generate()
+    # TB_Report(paths, tags_to_show).generate("Report.pdf")
 
+    # Compute best metric and epoch
     (best_idx, best_lpips), (best_mse, best_ssim) = tb_retrieve_best_metric(
         experiment_path, "val_LPIPS", "min", additional_metrics=["val_MSE", "val_SSIM"]
     )

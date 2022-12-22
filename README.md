@@ -14,6 +14,14 @@ The repo includes also the [rpg_e2vid repo](https://github.com/uzh-rpg/rpg_e2vid
 In this section is described a brief overview on how the project is organized in folders:
 
 - **/models**: contains the code for all the models
+    - **autoencoder.py**: autoencoder to encode events grids
+    - **cnn.py**: basic CNN encoder-decoder architecture to transform event grids into RGB images
+    - **convit.py**: [ConViT model](https://github.com/facebookresearch/convit) which has been tested to perform color image reconstruction. It is a transformer architecture that initializes attention weights in order to perform convolutions and then it can learn to improve them.
+    - **modules.py**: it contains some useful models like PatchExtrator or PositionalEncoding
+    - **teacher_student.py**: numerous Teacher-Student architectures
+    - **tests.py**: simple tests of architectures to check if they work
+    - **transformer.py**: different Transformers architecture. The best performing one and used in the thesis is VisionTransformerConv.
+    - **unet.py**: initial architecture to perform the task taking in input images and events using a UNet architecture
 - **/dataset_utils.py**: many utils to load and preprocess datasets, inspect events and save visualizations
 - **/eval.py**: code to produce the qualitative results shown in the thesis
 - **/exploration.ipynb**: CED dataset analysis, some tests and generation of images for different events representations

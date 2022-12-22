@@ -337,7 +337,17 @@ def save_visual_accumulated_events(
             reconstructed_image = np.zeros(shape=(h, w), dtype=np.uint8)
 
 
-def gen_visual_bayer_events(event_grid):
+def gen_visual_bayer_events(event_grid: np.ndarray) -> np.ndarray:
+    """
+    Generate an image containing splitted RGGB events,
+    where positive polarity events are colored, and negative are blacks.
+
+    Args:
+        event_grid (np.ndarray): event grid representing the RGGB events.
+
+    Returns:
+        np.ndarray: image with the events visualization.
+    """
     first_bin = event_grid[len(event_grid) // 2]
     h, w = first_bin.shape
 

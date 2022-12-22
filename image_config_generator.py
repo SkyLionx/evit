@@ -1,8 +1,8 @@
 import subprocess
-from threading import Thread
 import time
 import os
 from random import randint
+from typing import Dict
 
 # Setup constants
 ENV_COMMAND = "source /home/fabrizio/setupeventsim_color.sh && "
@@ -11,38 +11,67 @@ COCO_DATASET_PATH = "/media/sf_Shared_Folder/val2017"
 DIV2K_TRAIN_DATASET_PATH = "/media/sf_Shared_Folder/DIV2K_train_HR"
 DIV2K_VALID_DATASET_PATH = "/media/sf_Shared_Folder/DIV2K_valid_HR"
 
-def parse_args_from_file(config_path):
+
+def parse_args_from_file(config_path: str) -> Dict[str, str]:
+    """
+    Parse the ESIM configuration file.
+
+    Args:
+        config_path (str): path of the configuration file.
+
+    Returns:
+        Dict[str, str]: dict containing name of the parameters and their values.
+    """
     with open(config_path) as file:
         args = {}
         for line in file:
             line = line.strip()
-            
+
             # If not empty line or comment
             if len(line) == 0 or line.startswith("#"):
                 continue
-            
+
             equals = line.index("=")
             name = line[:equals]
-            value = line[equals + 1:]
+            value = line[equals + 1 :]
             args[name] = value
         return args
-        
-def args_dict_to_string(args):
+
+
+def args_dict_to_string(args: Dict[str, str]) -> str:
+    """
+    Generate command line arguments from arguments dict.
+
+    Args:
+        args (Dict[str, str]): dict containing arguments.
+
+    Returns:
+        str: command line string with the specified arguments.
+    """
     string = ""
     for key, value in args.items():
         string += key + "=" + value
         string += " "
     return string
 
-def launch_process(command, stdout=False, stderr=True):
+
+def launch_process(command: str, stdout: bool = False, stderr: bool = True):
     stdout = None if stdout else subprocess.DEVNULL
     stderr = None if stderr else subprocess.DEVNULL
-    proc = subprocess.Popen(ENV_COMMAND + command, shell=True, executable="/bin/bash", stdout=stdout, stderr=stderr)
+    proc = subprocess.Popen(
+        ENV_COMMAND + command,
+        shell=True,
+        executable="/bin/bash",
+        stdout=stdout,
+        stderr=stderr,
+    )
     return proc
+
 
 def launch_ros_core():
     core = launch_process("roscore")
     return core
+
 
 def wait_for_master():
     master_up = False
@@ -53,8 +82,9 @@ def wait_for_master():
         except Exception as e:
             print("Master not ready")
             print(e)
-            time.sleep(.5)
-    
+            time.sleep(0.5)
+
+
 def launch_experiment(image_path, file_path):
     args = parse_args_from_file(CONFIG_PATH)
     args["--renderer_texture"] = image_path
@@ -75,12 +105,14 @@ def launch_experiment(image_path, file_path):
     print(args_dict_to_string(args))
     return launch_process(command)
 
+
 def get_file_ext(path):
     return path.split(".")[-1]
-    
+
+
 def get_images_path(dataset_folder, n=1):
     IMG_EXTS = set(["jpg", "png"])
-    
+
     paths = []
     i = 0
     for image in os.listdir(dataset_folder):
@@ -89,27 +121,27 @@ def get_images_path(dataset_folder, n=1):
         i += 1
         if n and i == n:
             break
-    return paths            
+    return paths
 
 
 if __name__ == "__main__":
-    #images_paths = [
-        #"/home/fabrizio/sim_ws_color/src/rpg_esim/event_camera_simulator/imp/imp_planar_renderer/textures/rocks.jpg",
-        #"/home/fabrizio/sim_ws_color/src/rpg_esim/event_camera_simulator/imp/imp_planar_renderer/textures/forest.jpg"
-    #]
-    
-    #images_paths = [
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0010.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0011.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0029.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0030.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0038.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0059.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0062.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0072.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0082.png",
-        #"/media/sf_Shared_Folder/DIV2K_train_HR/0088.png",
-    #]
+    # images_paths = [
+    # "/home/fabrizio/sim_ws_color/src/rpg_esim/event_camera_simulator/imp/imp_planar_renderer/textures/rocks.jpg",
+    # "/home/fabrizio/sim_ws_color/src/rpg_esim/event_camera_simulator/imp/imp_planar_renderer/textures/forest.jpg"
+    # ]
+
+    # images_paths = [
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0010.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0011.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0029.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0030.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0038.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0059.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0062.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0072.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0082.png",
+    # "/media/sf_Shared_Folder/DIV2K_train_HR/0088.png",
+    # ]
 
     images_paths = [
         # "/media/sf_Shared_Folder/test_image_black.png",
@@ -120,16 +152,16 @@ if __name__ == "__main__":
     ]
 
     OUTPUT_DIR = "/media/sf_Shared_Folder/bags/DIV2K_0.5_bw"
-    
+
     images_paths = get_images_path(DIV2K_VALID_DATASET_PATH, n=None)
     # images_paths = get_images_path(COCO_DATASET_PATH, n=None)
-    
+
     print("Launching ROSCore...")
     core = launch_ros_core()
 
     wait_for_master()
     print("Master ready")
-    
+
     # Create output foulder if needed
     if not os.path.exists(OUTPUT_DIR):
         os.mkdir(OUTPUT_DIR)
@@ -144,4 +176,3 @@ if __name__ == "__main__":
         print("Done")
 
     core.kill()
-

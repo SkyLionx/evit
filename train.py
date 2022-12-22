@@ -15,14 +15,32 @@ def train_model(
     model: pl.LightningModule,
     train_dataloader: torch.utils.data.DataLoader,
     valid_dataloader: torch.utils.data.DataLoader,
-    train_batch,
-    valid_batch,
+    images_train_batch: torch.Tensor,
+    images_valid_batch: torch.Tensor,
     PARAMS: Dict[str, Any],
 ):
+    """
+    Train the model with the specified parameters.
+
+    Args:
+        model (pl.LightningModule): model which needs to be trained.
+        train_dataloader (torch.utils.data.DataLoader): dataloader for training dataset.
+        valid_dataloader (torch.utils.data.DataLoader): dataloader for validation dataset.
+        images_train_batch (torch.Tensor): input batch which will be used to show how the model performs on training images.
+        images_valid_batch (_type_): input batch which will be used to show how the model performs on validation images.
+        PARAMS (Dict[str, Any]): training parameters. Recognized keys are "n_epochs", "comment" and "ckpt_path".
+    """
     callbacks = []
+    # Log learning rate on TensorBoard
     callbacks.append(LearningRateMonitor())
-    callbacks.append(LogImagesCallback(train_batch, valid_batch, n=5, n_epochs=5))
+    # Log train and valid images on TensorBoard
+    callbacks.append(
+        LogImagesCallback(images_train_batch, images_valid_batch, n=5, n_epochs=5)
+    )
+    # Use textual progress bar
     callbacks.append(KerasProgressBar())
+
+    # Save experiment every hour so if Colab dies, there is a backup
     if is_using_colab():
         dst_path = "/content/drive/MyDrive/Master Thesis"
         colab_cb = ColabSaveCallback(
@@ -30,6 +48,7 @@ def train_model(
         )
         callbacks.append(colab_cb)
 
+    # Save best and last checkpoint
     checkpoint_callback = ModelCheckpoint(
         monitor="val_LPIPS", mode="min", save_last=True
     )
@@ -43,6 +62,7 @@ def train_model(
     if len(train_dataloader) < log_every:
         log_every = 1
 
+    # Save params as text on TensorBoard
     params_markdown = (
         "```json\n" + json.dumps(PARAMS, indent=2).replace("\n", "  \n") + "\n```"
     )
