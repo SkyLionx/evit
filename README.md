@@ -139,3 +139,4 @@ For this project, the following technologies have been used:
 - TensorBoard for experiments logging and comparison
 - Matplotlib for plotting
 - OpenCV for demosaicing algorithms and video writing
+- ROS simulator to generate the synthetic event dataset
